@@ -18,6 +18,8 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include <stdio.h>
+#include <string.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -69,6 +71,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+  uint8_t rxData[100] = {0};
 
   /* USER CODE END 1 */
 
@@ -93,6 +96,7 @@ int main(void)
   MX_USART2_UART_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  memset(rxData, 0 ,sizeof(rxData));
 
   /* USER CODE END 2 */
 
@@ -100,6 +104,15 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  // Wait for message over UART (blocking mode)
+	  if (HAL_UART_Receive(&huart1, rxData, sizeof(rxData), HAL_MAX_DELAY) == HAL_OK) {
+		  // Print received message
+		  printf("Received: %s\n", rxData);
+
+		  // Clear memory buffer for next message
+		  memset(rxData, 0 ,sizeof(rxData));
+	  }
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

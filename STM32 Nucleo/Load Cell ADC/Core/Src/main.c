@@ -117,9 +117,9 @@ int main(void)
   float volts = 0;
   float kilograms = 0;
 
-  // Configure the ADS1115 to do continuous conversion, start with AIN0/1 load cell, use ±6.144V for FSR and 128 SPS data rate
+  // Configure the ADS1115 to do continuous conversion, start with AIN0/1 load cell, use ±0.256V for FSR and 128 SPS data rate
   txData[0] = ADS1115_CFG;
-  txData[1] = 0x00;
+  txData[1] = 0x0E;
   txData[2] = 0x83;
   HAL_I2C_Master_Transmit(&hi2c1, ADS1115_ADDR, txData, 3, HAL_MAX_DELAY);
 
@@ -134,7 +134,7 @@ int main(void)
 
 	  // Configure ADS1115 MUX to measure AIN0/1 load cell
 	  txData[0] = ADS1115_CFG;
-	  txData[1] = 0x00;
+	  txData[1] = 0x0E;
 	  txData[2] = 0x83;
 	  HAL_I2C_Master_Transmit(&hi2c1, ADS1115_ADDR, txData, 3, HAL_MAX_DELAY);
 	  // Wait a bit to take the measurements
@@ -150,7 +150,7 @@ int main(void)
 
 	  // Configure ADS1115 MUX to measure AIN2/3 load cell
 	  txData[0] = ADS1115_CFG;
-	  txData[1] = 0x30;
+	  txData[1] = 0x3E;
 	  txData[2] = 0x83;
 	  HAL_I2C_Master_Transmit(&hi2c1, ADS1115_ADDR, txData, 3, HAL_MAX_DELAY);
 	  // Wait a bit to take the measurements
@@ -166,10 +166,10 @@ int main(void)
 
 	  // Printing the voltage to the console
 //	  volts = rawLoadCell1 * 6.144 / 32768.0;
-	  kilograms = rawLoadCell1 * 20.0 / 32768.0;
+	  kilograms = rawLoadCell1 * 0.256 * 20.0 * 32 / 32768.0;
 	  printf("Load cell A: %.5f kg\r\n", kilograms);
 
-	  kilograms = rawLoadCell2 * 6.144 / 32768.0;
+	  kilograms = rawLoadCell2 * 0.256 * 20.0 * 32 / 32768.0;
 	  printf("Load cell B: %.5f kg\r\n\n", kilograms);
 
     /* USER CODE END WHILE */

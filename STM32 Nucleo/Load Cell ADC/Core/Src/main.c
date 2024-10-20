@@ -18,6 +18,8 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include <stdbool.h>
+#include <stdio.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -31,6 +33,11 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define ADS1115_ADDR 0x48 << 1
+
+#define ADS1115_CVR 0x00
+#define ADS1115_CFG 0x01
+
 
 /* USER CODE END PD */
 
@@ -59,7 +66,12 @@ static void MX_I2C1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+// Redirecting the printf function to print to the console (over UART2)
+int _write(int file, char *data, int len) {
+    // Redirect printf to UART
+    HAL_UART_Transmit(&huart2, (uint8_t*)data, len, HAL_MAX_DELAY);
+    return len;
+}
 /* USER CODE END 0 */
 
 /**
@@ -94,6 +106,22 @@ int main(void)
   MX_USART2_UART_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
+  // Buffers for TX/RX data of I2C bus
+  uint8_t txData[3] = {0};
+  uint8_t rxData[2] = {0};
+
+  // Variables for storing load cell readings
+  int16_t rawLoadCell1 = 0;
+  int16_t rawLoadCell2 = 0;
+
+  float volts = 0;
+  float kilograms = 0;
+
+  // Configure the ADS1115 to do continuous conversion, start with AIN0/1 load cell, use ±6.144V for FSR and 128 SPS data rate
+  txData[0] = ADS1115_CFG;
+  txData[1] = 0x00;
+  txData[2] = 0x83;
+  HAL_I2C_Master_Transmit(&hi2c1, ADS1115_ADDR, txData, 3, HAL_MAX_DELAY);
 
   /* USER CODE END 2 */
 
@@ -101,6 +129,49 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  // Wait 100ms between starting new measurements
+	  HAL_Delay(1000);
+
+	  // Configure ADS1115 MUX to measure AIN0/1 load cell
+	  txData[0] = ADS1115_CFG;
+	  txData[1] = 0x00;
+	  txData[2] = 0x83;
+	  HAL_I2C_Master_Transmit(&hi2c1, ADS1115_ADDR, txData, 3, HAL_MAX_DELAY);
+	  // Wait a bit to take the measurements
+	  HAL_Delay(50);
+	  // Read the measurement and store it
+	  txData[0] = ADS1115_CVR;
+	  HAL_I2C_Master_Transmit(&hi2c1, ADS1115_ADDR, txData, 1, HAL_MAX_DELAY);
+	  HAL_Delay(1);
+	  rxData[0] = 0x00;
+	  rxData[1] = 0x00;
+	  HAL_I2C_Master_Receive(&hi2c1, ADS1115_ADDR, rxData, 2, HAL_MAX_DELAY);
+	  rawLoadCell1 = (rxData[0] << 8) | rxData[1];
+
+	  // Configure ADS1115 MUX to measure AIN2/3 load cell
+	  txData[0] = ADS1115_CFG;
+	  txData[1] = 0x30;
+	  txData[2] = 0x83;
+	  HAL_I2C_Master_Transmit(&hi2c1, ADS1115_ADDR, txData, 3, HAL_MAX_DELAY);
+	  // Wait a bit to take the measurements
+	  HAL_Delay(50);
+	  // Read the measurement and store it
+	  txData[0] = ADS1115_CVR;
+	  HAL_I2C_Master_Transmit(&hi2c1, ADS1115_ADDR, txData, 1, HAL_MAX_DELAY);
+	  HAL_Delay(1);
+	  rxData[0] = 0x00;
+	  rxData[1] = 0x00;
+	  HAL_I2C_Master_Receive(&hi2c1, ADS1115_ADDR, rxData, 2, HAL_MAX_DELAY);
+	  rawLoadCell2 = (rxData[0] << 8) | rxData[1];
+
+	  // Printing the voltage to the console
+//	  volts = rawLoadCell1 * 6.144 / 32768.0;
+	  kilograms = rawLoadCell1 * 20.0 / 32768.0;
+	  printf("Load cell A: %.5f kg\r\n", kilograms);
+
+	  kilograms = rawLoadCell2 * 6.144 / 32768.0;
+	  printf("Load cell B: %.5f kg\r\n\n", kilograms);
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

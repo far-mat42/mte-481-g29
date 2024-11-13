@@ -114,6 +114,9 @@ int main(void)
   int16_t rawLoadCell1 = 0;
   int16_t rawLoadCell2 = 0;
 
+  int16_t LoadCell1_Offset = -117;
+  int16_t LoadCell2_Offset = 138;
+
   float volts = 0;
   float kilograms = 0;
 
@@ -167,7 +170,7 @@ int main(void)
 	  // Printing the voltage to the console
 //	  volts = rawLoadCell1 * 6.144 / 32768.0;
 	  kilograms = rawLoadCell1 * 0.256 * 20.0 * 32 / 32768.0;
-	  printf("Load cell A: %.5f kg\r\n", kilograms);
+	  printf("Load cell A: %d counts / %.7f mV \r\n", (rawLoadCell1 - LoadCell2_Offset), ((rawLoadCell1 - LoadCell2_Offset)*0.256 / 32768.0));
 
 	  kilograms = rawLoadCell2 * 0.256 * 20.0 * 32 / 32768.0;
 	  printf("Load cell B: %.5f kg\r\n\n", kilograms);

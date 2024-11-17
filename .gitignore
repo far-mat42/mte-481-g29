@@ -7,3 +7,9 @@ Debug/
 
 # STM32 git ignore
 *.mxproject
+
+# Altium git ignore
+/Custom PCBs/*/__Previews
+/Custom PCBs/*/History
+/Custom PCBs/Load Cell ADC Module/Project Logs for Load Cell ADC Module
+

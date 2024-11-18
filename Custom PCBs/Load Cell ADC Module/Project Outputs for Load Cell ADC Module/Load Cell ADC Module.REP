@@ -1,0 +1,183 @@
+*************************************************************
+FileName = Load Cell ADC Module.GBR
+AutoAperture = True
+*************************************************************
+Generating : L1 - Primary
+      File : Load Cell ADC Module.GTL
+
+    Adding Layer      : L1 - Primary
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D10
+    D12
+    D13
+    D14
+    D15
+    D16
+    D24
+    D25
+    D26
+    D27
+    D28
+*************************************************************
+
+*************************************************************
+Generating : L3 - GND
+      File : Load Cell ADC Module.G2
+
+    Adding Layer      : L3 - GND
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D24
+    D25
+    D26
+    D27
+    D28
+*************************************************************
+
+*************************************************************
+Generating : Bottom Paste
+      File : Load Cell ADC Module.GBP
+
+    Adding Layer      : Bottom Paste
+
+    Adding Layer      : L4 - Secondary
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+*************************************************************
+
+*************************************************************
+Generating : L4 - Secondary
+      File : Load Cell ADC Module.GBL
+
+    Adding Layer      : L4 - Secondary
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D13
+    D24
+    D25
+    D26
+    D27
+    D28
+*************************************************************
+
+*************************************************************
+Generating : Top Paste
+      File : Load Cell ADC Module.GTP
+
+    Adding Layer      : Top Paste
+
+    Adding Layer      : L1 - Primary
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D14
+    D15
+    D16
+*************************************************************
+
+*************************************************************
+Generating : L2 - GND
+      File : Load Cell ADC Module.G1
+
+    Adding Layer      : L2 - GND
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D24
+    D25
+    D26
+    D27
+    D28
+*************************************************************
+
+*************************************************************
+Generating : Mechanical 1
+      File : Load Cell ADC Module.GM1
+
+    Adding Layer      : Mechanical 1
+
+
+Used DCodes :
+    D13
+*************************************************************
+
+*************************************************************
+Generating : Top Overlay
+      File : Load Cell ADC Module.GTO
+
+    Adding Layer      : Top Overlay
+
+
+Used DCodes :
+    D10
+    D11
+    D12
+    D13
+*************************************************************
+
+*************************************************************
+Generating : Bottom Overlay
+      File : Load Cell ADC Module.GBO
+
+    Adding Layer      : Bottom Overlay
+
+
+Used DCodes :
+*************************************************************
+
+*************************************************************
+Generating : Top Solder
+      File : Load Cell ADC Module.GTS
+
+    Adding Layer      : Top Solder
+
+    Adding Layer      : L1 - Primary
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D17
+    D18
+    D19
+    D20
+    D21
+    D22
+    D23
+*************************************************************
+
+*************************************************************
+Generating : Bottom Solder
+      File : Load Cell ADC Module.GBS
+
+    Adding Layer      : Bottom Solder
+
+    Adding Layer      : L4 - Secondary
+
+    Adding Layer      : Multi-Layer
+
+
+Used DCodes :
+    D20
+    D21
+    D22
+    D23
+*************************************************************
+

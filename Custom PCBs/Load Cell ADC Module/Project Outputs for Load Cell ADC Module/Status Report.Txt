@@ -1,0 +1,12 @@
+Output: NC Drill Files
+Type  : NC Drill
+From  : Project [Load Cell ADC Module.PrjPcb]
+   Generated File[Load Cell ADC Module.TXT]
+   Generated File[Load Cell ADC Module.LDP]
+   Generated File[Load Cell ADC Module.DRR]
+
+
+Files Generated   : 3
+Documents Printed : 0
+
+Finished Output Generation At 12:38:21 AM On 2024-11-18

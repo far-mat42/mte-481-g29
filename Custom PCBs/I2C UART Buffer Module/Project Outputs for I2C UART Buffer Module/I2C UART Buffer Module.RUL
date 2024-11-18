@@ -1,0 +1,11 @@
+DRC Rules Export File for PCB: D:\GitHub\mte-481-g29\Custom PCBs\I2C UART Buffer Module\I2C UART Buffer Module.PcbDoc
+RuleKind=MinimumAnnularRing|RuleName=MinimumAnnularRing|Scope=Board|Minimum=3.00
+RuleKind=ShortCircuit|RuleName=ShortCircuit|Scope=Board|Allowed=0
+RuleKind=ShortCircuit|RuleName=ShortCircuitNetTie|Scope=Board|Allowed=1
+RuleKind=SolderMaskExpansion|RuleName=SolderMaskExpansion|Scope=Board|Minimum=2.95
+RuleKind=Width|RuleName=Width|Scope=Board|Minimum=6.00
+RuleKind=Clearance|RuleName=ClearanceBottomLayer|Scope=Board|Minimum=7.87
+RuleKind=Clearance|RuleName=ClearanceTopLayer|Scope=Board|Minimum=7.87
+RuleKind=Clearance|RuleName=ClearanceMidLayer2|Scope=Board|Minimum=7.87
+RuleKind=Clearance|RuleName=ClearanceMidLayer1|Scope=Board|Minimum=7.87
+RuleKind=Clearance|RuleName=ClearanceNetTie|Scope=Board|Minimum=0.00

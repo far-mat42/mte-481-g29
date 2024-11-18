@@ -1,0 +1,5 @@
+Record=TopLevelDocument|FileName=ADC Module.SchDoc|SheetNumber=1
+Record=SheetSymbol|SourceDocument=ADC Module.SchDoc|Designator=AIN0|SchDesignator=AIN0|FileName=Filter.SchDoc|SheetNumber=2|SymbolType=Normal|RawFileName=Filter.SchDoc|DesignItemId= |SourceLibraryName= |ObjectKind=Sheet Symbol|RevisionGUID= |ItemGUID= |VaultGUID= 
+Record=SheetSymbol|SourceDocument=ADC Module.SchDoc|Designator=AIN1|SchDesignator=AIN1|FileName=Filter.SchDoc|SheetNumber=2|SymbolType=Normal|RawFileName=Filter.SchDoc|DesignItemId= |SourceLibraryName= |ObjectKind=Sheet Symbol|RevisionGUID= |ItemGUID= |VaultGUID= 
+Record=SheetSymbol|SourceDocument=ADC Module.SchDoc|Designator=AIN2|SchDesignator=AIN2|FileName=Filter.SchDoc|SheetNumber=2|SymbolType=Normal|RawFileName=Filter.SchDoc|DesignItemId= |SourceLibraryName= |ObjectKind=Sheet Symbol|RevisionGUID= |ItemGUID= |VaultGUID= 
+Record=SheetSymbol|SourceDocument=ADC Module.SchDoc|Designator=AIN3|SchDesignator=AIN3|FileName=Filter.SchDoc|SheetNumber=2|SymbolType=Normal|RawFileName=Filter.SchDoc|DesignItemId= |SourceLibraryName= |ObjectKind=Sheet Symbol|RevisionGUID= |ItemGUID= |VaultGUID= 

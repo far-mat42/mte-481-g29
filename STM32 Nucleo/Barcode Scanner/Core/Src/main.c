@@ -18,11 +18,12 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include <stdio.h>
-#include <string.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdbool.h>
+#include <stdio.h>
+#include <string.h>
 
 /* USER CODE END Includes */
 
@@ -33,6 +34,12 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define XR20M_ADDR 0x60 << 1
+
+#define BUF_RHR_THR_DLL 0x00
+#define BUF_DLM_IER 0x01
+#define BUF_DLD_ISR_FCR_EFR 0x02
+#define BUF_LCR 0x03
 
 /* USER CODE END PD */
 
@@ -42,6 +49,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+I2C_HandleTypeDef hi2c1;
+
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
@@ -54,7 +63,10 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
+void BufferRegisterWrite(uint8_t *txBytes, uint8_t regAddr, uint8_t regData, bool selChB);
+void BufferRegisterRead(uint8_t *rxBytes, uint8_t regAddr, uint8_t numBytes, bool selChB);
 
 /* USER CODE END PFP */
 
@@ -76,40 +88,56 @@ int _write(int file, char *data, int len) {
 int main(void)
 {
 
-  /* USER CODE BEGIN 1 */
-  uint8_t rxData[100] = {0};
+	/* USER CODE BEGIN 1 */
+	uint8_t rxData[100] = {0};
+	uint8_t rxI2C[64] = {0};
+	uint8_t txI2C[64] = {0};
 
-  /* USER CODE END 1 */
+	/* USER CODE END 1 */
 
-  /* MCU Configuration--------------------------------------------------------*/
+	/* MCU Configuration--------------------------------------------------------*/
 
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
+	/* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+	HAL_Init();
 
-  /* USER CODE BEGIN Init */
+	/* USER CODE BEGIN Init */
 
-  /* USER CODE END Init */
+	/* USER CODE END Init */
 
-  /* Configure the system clock */
-  SystemClock_Config();
+	/* Configure the system clock */
+	SystemClock_Config();
 
-  /* USER CODE BEGIN SysInit */
+	/* USER CODE BEGIN SysInit */
 
-  /* USER CODE END SysInit */
+	/* USER CODE END SysInit */
 
-  /* Initialize all configured peripherals */
-  MX_GPIO_Init();
-  MX_USART2_UART_Init();
-  MX_USART1_UART_Init();
-  /* USER CODE BEGIN 2 */
-  memset(rxData, 0 ,sizeof(rxData));
+	/* Initialize all configured peripherals */
+	MX_GPIO_Init();
+	MX_USART2_UART_Init();
+	MX_USART1_UART_Init();
+	MX_I2C1_Init();
+	/* USER CODE BEGIN 2 */
+	memset(rxData, 0 ,sizeof(rxData));
 
-  /* USER CODE END 2 */
+	// Configuring the XR20M1172 buffer on startup
+	// Starting with line control register (LCR), also gives access to divisor registers to be configured
+	BufferRegisterWrite(txI2C, BUF_LCR, 0x83, 0); // Channel A configured to 8-bit word length, no parity, 1 stop bit, divisor registers enabled
+	BufferRegisterWrite(txI2C, BUF_LCR, 0x83, 1); // Channel B configured to 8-bit word length, no parity, 1 stop bit, divisor registers enabled
 
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
-  while (1)
-  {
+	// Configure clock divisors - set baud rate for channel A and B to 9600 (based on 24MHz crystal)
+	BufferRegisterWrite(txI2C, BUF_RHR_THR_DLL, 0x9C, 0);
+	BufferRegisterWrite(txI2C, BUF_DLD_ISR_FCR_EFR, 0x04, 0);
+	BufferRegisterWrite(txI2C, BUF_DLM_IER, 0x00, 0);
+	BufferRegisterWrite(txI2C, BUF_RHR_THR_DLL, 0x9C, 1);
+	BufferRegisterWrite(txI2C, BUF_DLD_ISR_FCR_EFR, 0x04, 1);
+	BufferRegisterWrite(txI2C, BUF_DLM_IER, 0x00, 1);
+
+	/* USER CODE END 2 */
+
+	/* Infinite loop */
+	/* USER CODE BEGIN WHILE */
+	while (1)
+	{
 	  // Wait for message over UART (blocking mode)
 //	  if (HAL_UART_Receive(&huart1, rxData, sizeof(rxData), HAL_MAX_DELAY) == HAL_OK) {
 //		  // Print received message
@@ -118,13 +146,13 @@ int main(void)
 //		  // Clear memory buffer for next message
 //		  memset(rxData, 0 ,sizeof(rxData));
 //	  }
-	  HAL_Delay(1000);
-	  printf("Hello world!\r\n");
+		HAL_Delay(1000);
+		printf("Hello world!\r\n");
 
-    /* USER CODE END WHILE */
+		/* USER CODE END WHILE */
 
-    /* USER CODE BEGIN 3 */
-  }
+		/* USER CODE BEGIN 3 */
+	}
   /* USER CODE END 3 */
 }
 
@@ -172,6 +200,40 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
+
 }
 
 /**
@@ -278,6 +340,33 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+/**
+ * Helper function to handle writing to one of the buffer's internal UART registers
+ */
+void BufferRegisterWrite(uint8_t *txBytes, uint8_t regAddr, uint8_t regData, bool selChB) {
+	// Construct address by shifting the register address and channel select appropriately
+	uint8_t addr = (regAddr << 3) | (selChB << 1);
+
+	// Send an I2C write to the buffer's slave address, then write the data to the register address
+	txBytes[0] = addr;
+	txBytes[1] = regData;
+	HAL_I2C_Master_Transmit(&hi2c1, XR20M_ADDR, txBytes, 2, HAL_MAX_DELAY);
+}
+
+/**
+ * Helper function to handle reading from one of the buffer's internal UART registers
+ */
+void BufferRegisterRead(uint8_t *rxBytes, uint8_t regAddr, uint8_t numBytes, bool selChB) {
+	// Construct address by shifting the register address and channel select appropriately
+	uint8_t addr = (regAddr << 3) | (selChB << 1);
+
+	// Send an I2C write to the buffer's slave address in order to indicate which register is being read from
+	uint8_t txByte[1] = {addr};
+	HAL_I2C_Master_Transmit(&hi2c1, XR20M_ADDR, txByte, 1, HAL_MAX_DELAY);
+	// Read the number of bytes from the register
+	HAL_I2C_Master_Receive(&hi2c1, XR20M_ADDR, rxBytes, numBytes, HAL_MAX_DELAY);
+}
+
 
 /* USER CODE END 4 */
 

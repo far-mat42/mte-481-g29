@@ -158,8 +158,8 @@ int main(void)
   	BufferRegisterWrite(txI2C, BUF_SPR_TLR_XOFF2, 0x03, 0);
   	BufferRegisterWrite(txI2C, BUF_SPR_TLR_XOFF2, 0x03, 1);
   	// Enable the interrupt for the receive buffer trigger level
-  	BufferRegisterWrite(txI2C, BUF_DLM_IER, 0x01, 0);
-  	BufferRegisterWrite(txI2C, BUF_DLM_IER, 0x01, 1);
+  	BufferRegisterWrite(txI2C, BUF_DLM_IER, 0x00, 0);
+  	BufferRegisterWrite(txI2C, BUF_DLM_IER, 0x00, 1);
 
   /* USER CODE END 2 */
 
@@ -202,9 +202,12 @@ int main(void)
 	  // Check the amount stored in each buffer - if a full barcode is stored (12 characters + end-of-line character), read it from the FIFO buffer
 	  	HAL_Delay(1000);
 	  	printf("Checking barcode scanner buffers...\r\n");
-		BufferRegisterRead(rxI2C, BUF_RXLVL, 1, 0);
+	  	BufferRegisterRead(rxI2C, BUF_RXLVL, 1, 0);
+		BufferRegisterRead(rxI2C, BUF_LSR_XON2, 1, 0);
 		// Keep reading barcodes as long as the buffer contains enough characters
-		while (rxI2C[0] >= BARCODE_LEN) {
+//		while (rxI2C[0] >= BARCODE_LEN) {
+//		while ((rxI2C[0] & 1) == 1) {
+		if (1) {
 			BufferRegisterRead(rxI2C, BUF_RHR_THR_DLL, BARCODE_LEN, 0);
 			// Format the received data into a character array
 			for (int i = 0; i < BARCODE_LEN; i++) {
@@ -214,10 +217,14 @@ int main(void)
 
 			printf("Received barcode from scanner A: %s\n", rxBuffer);
 			// Re-read the buffer level to check if any barcodes remaining
-			BufferRegisterRead(rxI2C, BUF_RXLVL, 1, 0);
+//			BufferRegisterRead(rxI2C, BUF_RXLVL, 1, 0);
+			BufferRegisterRead(rxI2C, BUF_LSR_XON2, 1, 0);
 		}
 		BufferRegisterRead(rxI2C, BUF_RXLVL, 1, 1);
-		while (rxI2C[0] >= BARCODE_LEN) {
+		BufferRegisterRead(rxI2C, BUF_LSR_XON2, 1, 0);
+//		while (rxI2C[0] >= BARCODE_LEN) {
+//		while ((rxI2C[0] & 1) == 1) {
+		if (1) {
 			BufferRegisterRead(rxI2C, BUF_RHR_THR_DLL, BARCODE_LEN, 1);
 			for (int i = 0; i < BARCODE_LEN; i++) {
 				rxBuffer[i] = (char)rxI2C[i];
@@ -226,19 +233,20 @@ int main(void)
 
 			printf("Received barcode from scanner B: %s\n", rxBuffer);
 			// Re-read the buffer level to check if any barcodes remaining
-			BufferRegisterRead(rxI2C, BUF_RXLVL, 1, 1);
+//			BufferRegisterRead(rxI2C, BUF_RXLVL, 1, 1);
+			BufferRegisterRead(rxI2C, BUF_LSR_XON2, 1, 0);
 		}
 
 		// Try transmitting something on channel A
-		HAL_Delay(100);
-		BufferRegisterRead(rxI2C, BUF_LSR_XON2, 1, 0);
-		for (int i = 0; i < 16; i++) {
-			BufferRegisterWrite(txI2C, BUF_RHR_THR_DLL, (uint8_t)(i*2 + 1), 0);
-		}
-		BufferRegisterRead(rxI2C, BUF_LSR_XON2, 1, 0);
-		// Read LSR for each channel
-		HAL_Delay(100);
-		BufferRegisterRead(rxI2C, BUF_LSR_XON2, 1, 1);
+//		HAL_Delay(100);
+//		BufferRegisterRead(rxI2C, BUF_LSR_XON2, 1, 0);
+//		for (int i = 0; i < 16; i++) {
+//			BufferRegisterWrite(txI2C, BUF_RHR_THR_DLL, (uint8_t)(i*2 + 1), 0);
+//		}
+//		BufferRegisterRead(rxI2C, BUF_LSR_XON2, 1, 0);
+//		// Read LSR for each channel
+//		HAL_Delay(100);
+//		BufferRegisterRead(rxI2C, BUF_LSR_XON2, 1, 1);
 
 
     /* USER CODE END WHILE */

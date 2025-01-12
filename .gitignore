@@ -14,3 +14,6 @@ Debug/
 /Custom PCBs/Load Cell ADC Module/Project Logs for Load Cell ADC Module
 
 /Custom PCBs/I2C UART Buffer Module/Project Logs for I2C UART Buffer Module
+
+# Solidworks git ignore
+*~$*

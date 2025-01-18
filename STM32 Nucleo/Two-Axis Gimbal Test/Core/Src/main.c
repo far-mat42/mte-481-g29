@@ -21,6 +21,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "math.h"
+#include <stdbool.h>
 
 /* USER CODE END Includes */
 
@@ -32,9 +34,18 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define TIM1_ARR 			19999
+
 #define SERVO_DUTY_MIN 		650.0
 #define SERVO_DUTY_BW		1700.0
 #define SERVO_ANGLE_MAX		180
+
+#define SERVO1_START 		15
+#define SERVO1_END			165
+#define SERVO1_MAX_SPEED	5
+
+#define SERVO2_START		15
+#define SERVO2_END			165
+#define SERVO2_SPEED		1
 
 /* USER CODE END PD */
 
@@ -45,10 +56,12 @@
 
 /* Private variables ---------------------------------------------------------*/
 TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim2;
 
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+bool servoFlag = false;
 
 /* USER CODE END PV */
 
@@ -57,6 +70,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM1_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 void SetServoAngle (uint32_t channel, uint8_t angle);
 
@@ -84,6 +98,11 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
+  uint8_t servoAng1 = SERVO1_START;
+  uint8_t servoDir1 = 1;
+  uint8_t servoSpeed1 = 0;
+  uint8_t servoAng2 = SERVO2_START;
+  uint8_t servoDir2 = 1;
 
   /* USER CODE END Init */
 
@@ -98,57 +117,39 @@ int main(void)
   MX_GPIO_Init();
   MX_USART2_UART_Init();
   MX_TIM1_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-  SetServoAngle(TIM_CHANNEL_1, 90);
-  SetServoAngle(TIM_CHANNEL_2, 90);
-  HAL_Delay(2000);
+  SetServoAngle(TIM_CHANNEL_1, SERVO1_START);
+  SetServoAngle(TIM_CHANNEL_2, SERVO2_START);
+  HAL_Delay(3000);
+  HAL_TIM_Base_Start_IT(&htim2);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  HAL_Delay(2000);
-	  SetServoAngle(TIM_CHANNEL_1, 0);
-	  HAL_Delay(500);
-	  SetServoAngle(TIM_CHANNEL_2, 0);
+	  // Update servo positions when timer interrupt flag raised
+	  if (servoFlag) {
+		  servoFlag = 0;
 
-	  HAL_Delay(500);
-	  SetServoAngle(TIM_CHANNEL_1, 45);
-	  HAL_Delay(500);
-	  SetServoAngle(TIM_CHANNEL_2, 45);
+		  // Servo 1 (pitch axis): Update speed using a quadratic equation
+		  servoSpeed1 = SERVO1_MAX_SPEED*(-0.0001422222*servoAng1*servoAng1 + 0.0256*servoAng1 - 0.152);
+		  servoAng1 += servoSpeed1*servoDir1;
+		  // Switch direction if max/min value reached
+		  if (servoAng1 >= SERVO1_END) servoDir1 = -1;
+		  if (servoAng1 <= SERVO1_START) servoDir1 = 1;
+		  SetServoAngle(TIM_CHANNEL_1, servoAng1);
 
-	  HAL_Delay(500);
-	  SetServoAngle(TIM_CHANNEL_1, 90);
-	  HAL_Delay(500);
-	  SetServoAngle(TIM_CHANNEL_2, 90);
-
-	  HAL_Delay(500);
-	  SetServoAngle(TIM_CHANNEL_1, 135);
-	  HAL_Delay(500);
-	  SetServoAngle(TIM_CHANNEL_2, 135);
-
-	  HAL_Delay(500);
-	  SetServoAngle(TIM_CHANNEL_1, 180);
-	  HAL_Delay(500);
-	  SetServoAngle(TIM_CHANNEL_2, 180);
-
-	  HAL_Delay(500);
-	  SetServoAngle(TIM_CHANNEL_1, 135);
-	  HAL_Delay(500);
-	  SetServoAngle(TIM_CHANNEL_2, 135);
-
-	  HAL_Delay(500);
-	  SetServoAngle(TIM_CHANNEL_1, 90);
-	  HAL_Delay(500);
-	  SetServoAngle(TIM_CHANNEL_2, 90);
-
-	  HAL_Delay(500);
-	  SetServoAngle(TIM_CHANNEL_1, 45);
-	  HAL_Delay(500);
-	  SetServoAngle(TIM_CHANNEL_2, 45);
+		  // Servo 2 (yaw axis): Increment position by speed value
+		  servoAng2 += SERVO2_SPEED*servoDir2;
+		  // Switch direction if max/min value reached
+		  if (servoAng2 >= SERVO2_END) servoDir2 = -1;
+		  if (servoAng2 <= SERVO2_START) servoDir2 = 1;
+		  SetServoAngle(TIM_CHANNEL_2, servoAng2);
+	  }
 
     /* USER CODE END WHILE */
 
@@ -283,6 +284,51 @@ static void MX_TIM1_Init(void)
 }
 
 /**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 8399;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 399;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -367,6 +413,11 @@ void SetServoAngle (uint32_t channel, uint8_t angle) {
 		default:
 			break;
 	}
+}
+
+void TIM2_IRQHandler(void) {
+  servoFlag = 1;
+  HAL_TIM_IRQHandler(&htim2);
 }
 
 /* USER CODE END 4 */

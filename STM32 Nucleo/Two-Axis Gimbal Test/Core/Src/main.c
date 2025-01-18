@@ -31,7 +31,10 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define TIM1_ARR 19999
+#define TIM1_ARR 			19999
+#define SERVO_DUTY_MIN 		650.0
+#define SERVO_DUTY_BW		1700.0
+#define SERVO_ANGLE_MAX		180
 
 /* USER CODE END PD */
 
@@ -96,6 +99,8 @@ int main(void)
   MX_USART2_UART_Init();
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
   SetServoAngle(TIM_CHANNEL_1, 90);
   SetServoAngle(TIM_CHANNEL_2, 90);
   HAL_Delay(2000);
@@ -349,8 +354,8 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 void SetServoAngle (uint32_t channel, uint8_t angle) {
-	if (angle >= 180) angle = 180;
-	uint16_t dutyCycle = ((double)angle / 180.0)*1750.0 + 625;
+	if (angle >= SERVO_ANGLE_MAX) angle = SERVO_ANGLE_MAX;
+	uint16_t dutyCycle = ((double)angle / 180.0)*SERVO_DUTY_BW + SERVO_DUTY_MIN;
 
 	switch(channel) {
 		case TIM_CHANNEL_1:

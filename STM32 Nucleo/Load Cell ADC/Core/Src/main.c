@@ -37,7 +37,7 @@
 
 #define ADS1219_RDATA 0x10
 #define ADS1219_WREG 0x40
-
+#define ADS1219_STARTSYNC 0x08
 
 /* USER CODE END PD */
 
@@ -114,8 +114,8 @@ int main(void)
   int32_t rawLoadCell1 = 0;
   int32_t rawLoadCell2 = 0;
 
-  int32_t LoadCell1_Offset = 0;
-  int32_t LoadCell2_Offset = 0;
+  int32_t LoadCell1_Offset = 17794;
+  int32_t LoadCell2_Offset = 16759174;
 
   float volts = 0;
   float kilograms = 0;
@@ -124,6 +124,10 @@ int main(void)
   txData[0] = ADS1219_WREG;
   txData[1] = 0x16;
   HAL_I2C_Master_Transmit(&hi2c1, ADS1219_ADDR, txData, 2, HAL_MAX_DELAY);
+
+  // Send the START/SYNC command to start continuous conversions
+  txData[0] = ADS1219_STARTSYNC;
+  HAL_I2C_Master_Transmit(&hi2c1, ADS1219_ADDR, txData, 1, HAL_MAX_DELAY);
 
   /* USER CODE END 2 */
 

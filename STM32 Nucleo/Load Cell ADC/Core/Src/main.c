@@ -110,12 +110,18 @@ int main(void)
   uint8_t txData[3] = {0};
   uint8_t rxData[3] = {0};
 
-  // Variables for storing load cell readings
+  // Variables and arrays for storing load cell readings
   int32_t rawLoadCell1 = 0;
   int32_t rawLoadCell2 = 0;
 
-  int32_t LoadCell1_Offset = 17794;
-  int32_t LoadCell2_Offset = 16759174;
+  int32_t LoadCell1_Offset = 13128;
+  int32_t LoadCell2_OffsetA = 16764472;
+  int32_t LoadCell2_OffsetB = -12744;
+
+  int32_t rawData1[25] = {0};
+  int32_t rawData2[25] = {0};
+  int32_t avg1 = 0;
+  int32_t avg2 = 0;
 
   float volts = 0;
   float kilograms = 0;
@@ -136,47 +142,62 @@ int main(void)
   while (1)
   {
 	  // Wait 100ms between starting new measurements
-	  HAL_Delay(100);
+//	  HAL_Delay(100);
 
-	  // Configure ADS1219 MUX to measure AIN0/1 load cell
-	  txData[0] = ADS1219_WREG;
-	  txData[1] = 0x16;
-	  HAL_I2C_Master_Transmit(&hi2c1, ADS1219_ADDR, txData, 2, HAL_MAX_DELAY);
-	  // Wait a bit to take the measurements
-	  HAL_Delay(50);
-	  // Read the measurement and store it
-	  txData[0] = ADS1219_RDATA;
-	  HAL_I2C_Master_Transmit(&hi2c1, ADS1219_ADDR, txData, 1, HAL_MAX_DELAY);
-	  HAL_Delay(1);
-	  rxData[0] = 0x00;
-	  rxData[1] = 0x00;
-	  rxData[2] = 0x00;
-	  HAL_I2C_Master_Receive(&hi2c1, ADS1219_ADDR, rxData, 3, HAL_MAX_DELAY);
-	  rawLoadCell1 = (rxData[0] << 16) | (rxData[1] << 8) | rxData[2];
+	  // Average 25 measurements (over approx. 1 second) to get the reading from each load cell.
+	  for (int i = 0; i < 25; i++) {
+		  // Configure ADS1219 MUX to measure AIN0/1 load cell
+		  txData[0] = ADS1219_WREG;
+		  txData[1] = 0x16;
+		  HAL_I2C_Master_Transmit(&hi2c1, ADS1219_ADDR, txData, 2, HAL_MAX_DELAY);
+		  // Wait a bit to take the measurements
+		  HAL_Delay(20);
+		  // Read the measurement and store it
+		  txData[0] = ADS1219_RDATA;
+		  HAL_I2C_Master_Transmit(&hi2c1, ADS1219_ADDR, txData, 1, HAL_MAX_DELAY);
+		  rxData[0] = 0x00;
+		  rxData[1] = 0x00;
+		  rxData[2] = 0x00;
+		  HAL_I2C_Master_Receive(&hi2c1, ADS1219_ADDR, rxData, 3, HAL_MAX_DELAY);
+		  rawLoadCell1 = (rxData[0] << 16) | (rxData[1] << 8) | rxData[2];
+		  rawData1[i] = rawLoadCell1 - LoadCell1_Offset;
+//		  printf("%ld\r\n", rawLoadCell1);
 
-	  // Configure ADS1115 MUX to measure AIN2/3 load cell
-	  txData[0] = ADS1219_WREG;
-	  txData[1] = 0x36;
-	  HAL_I2C_Master_Transmit(&hi2c1, ADS1219_ADDR, txData, 2, HAL_MAX_DELAY);
-	  // Wait a bit to take the measurements
-	  HAL_Delay(50);
-	  // Read the measurement and store it
-	  txData[0] = ADS1219_RDATA;
-	  HAL_I2C_Master_Transmit(&hi2c1, ADS1219_ADDR, txData, 1, HAL_MAX_DELAY);
-	  HAL_Delay(1);
-	  rxData[0] = 0x00;
-	  rxData[1] = 0x00;
-	  rxData[2] = 0x00;
-	  HAL_I2C_Master_Receive(&hi2c1, ADS1219_ADDR, rxData, 3, HAL_MAX_DELAY);
-	  rawLoadCell2 = (rxData[0] << 16) | (rxData[1] << 8) | rxData[2];
+		  // Configure ADS1115 MUX to measure AIN2/3 load cell
+		  txData[0] = ADS1219_WREG;
+		  txData[1] = 0x36;
+		  HAL_I2C_Master_Transmit(&hi2c1, ADS1219_ADDR, txData, 2, HAL_MAX_DELAY);
+		  // Wait a bit to take the measurements
+		  HAL_Delay(20);
+		  // Read the measurement and store it
+		  txData[0] = ADS1219_RDATA;
+		  HAL_I2C_Master_Transmit(&hi2c1, ADS1219_ADDR, txData, 1, HAL_MAX_DELAY);
+		  rxData[0] = 0x00;
+		  rxData[1] = 0x00;
+		  rxData[2] = 0x00;
+		  HAL_I2C_Master_Receive(&hi2c1, ADS1219_ADDR, rxData, 3, HAL_MAX_DELAY);
+		  rawLoadCell2 = (rxData[0] << 16) | (rxData[1] << 8) | rxData[2];
+		  // Applying offset on load cell B based on if it overflowed or not
+		  if (rawLoadCell2 > 16700000) rawData2[i] = rawLoadCell2 - LoadCell2_OffsetA;
+		  else rawData2[i] = rawLoadCell2 - LoadCell2_OffsetB;
+//		  printf("%ld\r\n", rawData2[i]);
+	  }
+	  avg1 = 0;
+	  avg2 = 0;
+	  for (int i = 0; i < 25; i++) {
+		  avg1 += rawData1[i];
+		  avg2 += rawData2[i];
+	  }
+	  avg1 = avg1/-25; // Load cell A is mounted in opposite direction, so sign is flipped to get the same sign when summing both
+	  avg2 = avg2/25;
 
 	  // Printing the voltage to the console
-//	  volts = rawLoadCell1 * 6.144 / 32768.0;
 	  kilograms = rawLoadCell1 * 2.048 * 20.0 * 32 / 8388608.0;
-	  printf("Load cell A: %ld counts / %.7f mV \r\n", (rawLoadCell1 - LoadCell1_Offset), ((rawLoadCell1 - LoadCell1_Offset)*2.048 / 8388608.0));
+	  printf("Load cell A: %ld counts / %.7f mV \r\n", (avg1), ((avg1)*0.512 / 8388608.0));
 
 	  kilograms = rawLoadCell2 * 2.048 * 20.0 * 32 / 8388608.0;
-	  printf("Load cell B: %ld counts / %.7f mV \r\n", (rawLoadCell2 - LoadCell2_Offset), ((rawLoadCell2 - LoadCell2_Offset)*2.048 / 8388608.0));
+	  printf("Load cell B: %ld counts / %.7f mV \r\n", (avg2), ((avg2)*0.512 / 8388608.0));
+	  printf("Scale measurement: %ld counts / %.7f mV \r\n\n", (avg1 + avg2), ((avg1 + avg2)*0.512 / 8388608.0));
 
     /* USER CODE END WHILE */
 

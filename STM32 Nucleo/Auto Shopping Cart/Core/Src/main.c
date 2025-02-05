@@ -21,6 +21,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
+#include <stdbool.h>
+#include "math.h"
 
 /* USER CODE END Includes */
 
@@ -31,6 +34,35 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define ADS1219_ADDR 		0x45 << 1
+
+#define ADS1219_RDATA 		0x10
+#define ADS1219_WREG 		0x40
+#define ADS1219_STARTSYNC 	0x08
+
+#define WEIGHT_THRESHOLD	0.025
+
+#define TIM1_ARR 			19999
+
+#define SERVO_DUTY_MIN 		650.0
+#define SERVO_DUTY_BW		1700.0
+#define SERVO_ANGLE_MAX		180
+
+#define SERVO1_START 		15
+#define SERVO1_END			165
+#define SERVO1_MAX_SPEED	5
+
+#define SERVO2_START		15
+#define SERVO2_END			165
+#define SERVO2_SPEED		1
+
+#define SERVO3_START 		15
+#define SERVO3_END			165
+#define SERVO3_MAX_SPEED	5
+
+#define SERVO4_START		15
+#define SERVO4_END			165
+#define SERVO4_SPEED		1
 
 /* USER CODE END PD */
 
@@ -51,6 +83,12 @@ UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart6;
 
 /* USER CODE BEGIN PV */
+bool servoFlag = false;
+bool scannersEnable = false;
+bool resetScanners = true;
+
+bool recordWeightFlag = false;
+bool scaleEnable = true;
 
 /* USER CODE END PV */
 
@@ -65,6 +103,7 @@ static void MX_TIM3_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART6_UART_Init(void);
 /* USER CODE BEGIN PFP */
+void SetServoAngle (uint32_t channel, uint8_t angle);
 
 /* USER CODE END PFP */
 
@@ -110,6 +149,52 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART6_UART_Init();
   /* USER CODE BEGIN 2 */
+  // Initializing variables for servo motor control
+  uint8_t servoAng1 = SERVO1_START;
+  uint8_t servoDir1 = 1;
+  uint8_t servoSpeed1 = 0;
+  uint8_t servoAng2 = SERVO2_START;
+  uint8_t servoDir2 = 1;
+
+  // Buffers for TX/RX data of I2C bus
+  uint8_t txData[3] = {0};
+  uint8_t rxData[3] = {0};
+
+  // Variables and arrays for storing load cell readings
+  int32_t rawLoadCell1 = 0;
+  int32_t rawLoadCell2 = 0;
+
+  int32_t LoadCell1_Offset = 13128;
+  int32_t LoadCell2_OffsetA = 16764472;
+  int32_t LoadCell2_OffsetB = -12744;
+
+  int32_t rawData1[25] = {0};
+  int32_t rawData2[25] = {0};
+  int32_t avg1 = 0;
+  int32_t avg2 = 0;
+
+  float kilograms = 0;
+  float prevKilograms = 0;
+  float recordedWeight = 0;
+  float prevRecordedWeight = 0;
+
+  // Configure the ADS1219 to do continuous conversion, start with AIN0/1 load cell, use internal 2.048V reference and 90 SPS data rate
+  txData[0] = ADS1219_WREG;
+  txData[1] = 0x16;
+  HAL_I2C_Master_Transmit(&hi2c1, ADS1219_ADDR, txData, 2, HAL_MAX_DELAY);
+
+  // Send the START/SYNC command to start continuous conversions
+  txData[0] = ADS1219_STARTSYNC;
+  HAL_I2C_Master_Transmit(&hi2c1, ADS1219_ADDR, txData, 1, HAL_MAX_DELAY);
+
+  // Startup for servo motors
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+  SetServoAngle(TIM_CHANNEL_1, SERVO1_START);
+  SetServoAngle(TIM_CHANNEL_2, SERVO2_START);
+  HAL_Delay(3000);
+  HAL_TIM_Base_Start_IT(&htim2);
+  HAL_TIM_Base_Start_IT(&htim3);
 
   /* USER CODE END 2 */
 
@@ -117,6 +202,107 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  // Reset position of barcode scanners if flagged to do so
+	  if (resetScanners) {
+		  SetServoAngle(TIM_CHANNEL_1, SERVO1_START);
+		  SetServoAngle(TIM_CHANNEL_2, SERVO2_START);
+		  SetServoAngle(TIM_CHANNEL_3, SERVO3_START);
+		  SetServoAngle(TIM_CHANNEL_4, SERVO4_START);
+
+		  resetScanners = false;
+	  }
+	  // Sweep the barcode scanners across the cart
+	  if (scannersEnable) {
+		  // Update servo positions when timer interrupt flag raised
+		  if (servoFlag) {
+			  servoFlag = 0;
+
+			  // Servo 1 (pitch axis): Update speed using a quadratic equation
+			  servoSpeed1 = SERVO1_MAX_SPEED*(-0.0001422222*servoAng1*servoAng1 + 0.0256*servoAng1 - 0.152);
+			  servoAng1 += servoSpeed1*servoDir1;
+			  // Switch direction if max/min value reached
+			  if (servoAng1 >= SERVO1_END) servoDir1 = -1;
+			  if (servoAng1 <= SERVO1_START) servoDir1 = 1;
+			  SetServoAngle(TIM_CHANNEL_1, servoAng1);
+
+			  // Servo 2 (yaw axis): Increment position by speed value
+			  servoAng2 += SERVO2_SPEED*servoDir2;
+			  // Switch direction if max value reached
+			  if (servoAng2 >= SERVO2_END) servoDir2 = -1;
+			  // If min value reached on yaw axis, stop the scanners (sweep is complete)
+			  if (servoAng2 <= SERVO2_START) {
+				  scannersEnable = false;
+				  resetScanners = true;
+			  }
+			  SetServoAngle(TIM_CHANNEL_2, servoAng2);
+		  }
+	  }
+	  // Average 25 measurements (over approx. 1 second) to get the reading from each load cell.
+	  if (scaleEnable) {
+		  prevKilograms = kilograms;
+		  for (int i = 0; i < 25; i++) {
+			  // Configure ADS1219 MUX to measure AIN0/1 load cell
+			  txData[0] = ADS1219_WREG;
+			  txData[1] = 0x16;
+			  HAL_I2C_Master_Transmit(&hi2c1, ADS1219_ADDR, txData, 2, HAL_MAX_DELAY);
+			  // Wait a bit to take the measurements
+			  HAL_Delay(15);
+			  // Read the measurement and store it
+			  txData[0] = ADS1219_RDATA;
+			  HAL_I2C_Master_Transmit(&hi2c1, ADS1219_ADDR, txData, 1, HAL_MAX_DELAY);
+			  rxData[0] = 0x00;
+			  rxData[1] = 0x00;
+			  rxData[2] = 0x00;
+			  HAL_I2C_Master_Receive(&hi2c1, ADS1219_ADDR, rxData, 3, HAL_MAX_DELAY);
+			  rawLoadCell1 = (rxData[0] << 16) | (rxData[1] << 8) | rxData[2];
+			  rawData1[i] = rawLoadCell1 - LoadCell1_Offset;
+
+			  // Configure ADS1115 MUX to measure AIN2/3 load cell
+			  txData[0] = ADS1219_WREG;
+			  txData[1] = 0x36;
+			  HAL_I2C_Master_Transmit(&hi2c1, ADS1219_ADDR, txData, 2, HAL_MAX_DELAY);
+			  // Wait a bit to take the measurements
+			  HAL_Delay(15);
+			  // Read the measurement and store it
+			  txData[0] = ADS1219_RDATA;
+			  HAL_I2C_Master_Transmit(&hi2c1, ADS1219_ADDR, txData, 1, HAL_MAX_DELAY);
+			  rxData[0] = 0x00;
+			  rxData[1] = 0x00;
+			  rxData[2] = 0x00;
+			  HAL_I2C_Master_Receive(&hi2c1, ADS1219_ADDR, rxData, 3, HAL_MAX_DELAY);
+			  rawLoadCell2 = (rxData[0] << 16) | (rxData[1] << 8) | rxData[2];
+			  // Applying offset on load cell B based on if it overflowed or not
+			  if (rawLoadCell2 > 16700000) rawData2[i] = rawLoadCell2 - LoadCell2_OffsetA;
+			  else rawData2[i] = rawLoadCell2 - LoadCell2_OffsetB;
+		  }
+		  avg1 = 0;
+		  avg2 = 0;
+		  for (int i = 0; i < 25; i++) {
+			  avg1 += rawData1[i];
+			  avg2 += rawData2[i];
+		  }
+		  avg1 = avg1/-25; // Load cell A is mounted in opposite direction, so sign is flipped to get the same sign when summing both
+		  avg2 = avg2/25;
+		  kilograms = (avg1 + avg2)*0.512 / 8388608;
+
+		  // Save the weight if required
+		  if (recordWeightFlag == true) {
+			  prevRecordedWeight = recordedWeight;
+			  recordedWeight = kilograms;
+			  // Stop the scale and start the barcode scanners
+			  scannersEnable = true;
+			  scaleEnable = false;
+		  }
+		  // TODO: Send weight info to ESP32
+
+		  // Check if current weight is greater than previous weight by the established threshold (25g)
+		  if (kilograms > (prevKilograms + WEIGHT_THRESHOLD) && recordWeightFlag == false) {
+			  recordWeightFlag = true;
+		  }
+
+		  recordWeightFlag = false;
+	  }
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -518,6 +704,30 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void SetServoAngle (uint32_t channel, uint8_t angle) {
+	if (angle >= SERVO_ANGLE_MAX) angle = SERVO_ANGLE_MAX;
+	uint16_t dutyCycle = ((double)angle / 180.0)*SERVO_DUTY_BW + SERVO_DUTY_MIN;
+
+	switch(channel) {
+		case TIM_CHANNEL_1:
+			__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, dutyCycle);
+			break;
+		case TIM_CHANNEL_2:
+			__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, dutyCycle);
+			break;
+		default:
+			break;
+	}
+}
+
+void TIM2_IRQHandler(void) {
+  servoFlag = 1;
+  HAL_TIM_IRQHandler(&htim2);
+}
+
+void TIM3_IRQHandler(void) {
+  HAL_TIM_IRQHandler(&htim3);
+}
 
 /* USER CODE END 4 */
 

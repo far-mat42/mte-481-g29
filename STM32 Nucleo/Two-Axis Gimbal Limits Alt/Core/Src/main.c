@@ -39,12 +39,12 @@
 #define SERVO_DUTY_BW		1700.0
 #define SERVO_ANGLE_MAX		180
 
-#define SERVO1_START 		0
-#define SERVO1_END			93
-#define SERVO1_MAX_SPEED	12
+#define SERVO1_START 		90
+#define SERVO1_END			165
+#define SERVO1_MAX_SPEED	5
 
-#define SERVO2_START		20
-#define SERVO2_END			155
+#define SERVO2_START		90
+#define SERVO2_END			165
 #define SERVO2_SPEED		1
 
 /* USER CODE END PD */
@@ -101,8 +101,6 @@ int main(void)
   uint8_t servoAng1 = SERVO1_START;
   uint8_t servoDir1 = 1;
   uint8_t servoSpeed1 = 0;
-  float servoSpeedCalc = 0;
-
   uint8_t servoAng2 = SERVO2_START;
   uint8_t servoDir2 = 1;
 
@@ -134,25 +132,12 @@ int main(void)
   while (1)
   {
 	  // Update servo positions when timer interrupt flag raised
-	  if (servoFlag) {
-		  servoFlag = 0;
-
-		  // Servo 1 (pitch axis): Update speed using a quadratic equation
-		  servoSpeedCalc = SERVO1_MAX_SPEED*(-0.000395501*servoAng1*servoAng1 + 0.0379681*servoAng1 + 0.0896552);
-		  servoSpeed1 = ((uint8_t)servoSpeedCalc);
-		  servoAng1 += servoSpeed1*servoDir1;
-		  // Switch direction if max/min value reached
-		  if (servoAng1 >= SERVO1_END) servoDir1 = -1;
-		  if (servoAng1 <= SERVO1_START) servoDir1 = 1;
-		  SetServoAngle(TIM_CHANNEL_1, servoAng1);
-
-		  // Servo 2 (yaw axis): Increment position by speed value
-		  servoAng2 += SERVO2_SPEED*servoDir2;
-		  // Switch direction if max/min value reached
-		  if (servoAng2 >= SERVO2_END) servoDir2 = -1;
-		  if (servoAng2 <= SERVO2_START) servoDir2 = 1;
-		  SetServoAngle(TIM_CHANNEL_2, servoAng2);
-	  }
+	  HAL_Delay(500);
+	  servoFlag = 0;
+	  servoAng1 += 3;
+	  servoAng2 += 3;
+	  SetServoAngle(TIM_CHANNEL_1, servoAng1);
+//	  SetServoAngle(TIM_CHANNEL_2, servoAng2);
 
     /* USER CODE END WHILE */
 
@@ -307,7 +292,7 @@ static void MX_TIM2_Init(void)
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 8399;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 799;
+  htim2.Init.Period = 9999;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)

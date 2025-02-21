@@ -40,29 +40,32 @@
 #define ADS1219_WREG 		0x40
 #define ADS1219_STARTSYNC 	0x08
 
-#define WEIGHT_THRESHOLD	0.025
+#define WEIGHT_THRESHOLD	0.040
 
 #define TIM1_ARR 			19999
 
+// Servos 1 and 3 on pitch axis, servos 2 and 4 on yaw axis
 #define SERVO_DUTY_MIN 		650.0
 #define SERVO_DUTY_BW		1700.0
 #define SERVO_ANGLE_MAX		180
 
-#define SERVO1_START 		15
-#define SERVO1_END			165
-#define SERVO1_MAX_SPEED	5
+#define SERVO1_START 		0
+#define SERVO1_END			93
+#define SERVO1_MAX_SPEED	12
 
-#define SERVO2_START		15
-#define SERVO2_END			165
+#define SERVO2_START		20
+#define SERVO2_END			160
 #define SERVO2_SPEED		1
 
-#define SERVO3_START 		15
-#define SERVO3_END			165
-#define SERVO3_MAX_SPEED	5
+#define SERVO3_START 		0
+#define SERVO3_END			93
+#define SERVO3_MAX_SPEED	12
 
-#define SERVO4_START		15
-#define SERVO4_END			165
+#define SERVO4_START		20
+#define SERVO4_END			160
 #define SERVO4_SPEED		1
+
+#define FINAL_SWEEP_COUNTS	20
 
 /* USER CODE END PD */
 
@@ -109,7 +112,12 @@ void SetServoAngle (uint32_t channel, uint8_t angle);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+// Redirecting the printf function to print to the console (over UART2)
+int _write(int file, char *data, int len) {
+    // Redirect printf to UART
+    HAL_UART_Transmit(&huart2, (uint8_t*)data, len, HAL_MAX_DELAY);
+    return len;
+}
 /* USER CODE END 0 */
 
 /**
@@ -153,8 +161,21 @@ int main(void)
   uint8_t servoAng1 = SERVO1_START;
   uint8_t servoDir1 = 1;
   uint8_t servoSpeed1 = 0;
+  float servoSpeedCalc1 = 0;
+
   uint8_t servoAng2 = SERVO2_START;
   uint8_t servoDir2 = 1;
+
+  uint8_t servoAng3 = SERVO3_START;
+  uint8_t servoDir3 = 1;
+  uint8_t servoSpeed3 = 0;
+  float servoSpeedCalc3 = 0;
+
+  uint8_t servoAng4 = SERVO2_START;
+  uint8_t servoDir4 = 1;
+
+  bool finalSweep = false;
+  uint8_t finalSweepCount =  0;
 
   // Buffers for TX/RX data of I2C bus
   uint8_t txData[3] = {0};
@@ -164,19 +185,20 @@ int main(void)
   int32_t rawLoadCell1 = 0;
   int32_t rawLoadCell2 = 0;
 
-  int32_t LoadCell1_Offset = 13128;
-  int32_t LoadCell2_OffsetA = 16764472;
-  int32_t LoadCell2_OffsetB = -12744;
+  int32_t LoadCell1_Offset = 0;
+  int32_t LoadCell2_OffsetA = 0;
+  int32_t LoadCell2_OffsetB = 0;
 
   int32_t rawData1[25] = {0};
   int32_t rawData2[25] = {0};
   int32_t avg1 = 0;
   int32_t avg2 = 0;
 
+  float lsbToKg = 0.000256;
   float kilograms = 0;
   float prevKilograms = 0;
   float recordedWeight = 0;
-  float prevRecordedWeight = 0;
+  float totalWeight = 0;
 
   // Configure the ADS1219 to do continuous conversion, start with AIN0/1 load cell, use internal 2.048V reference and 90 SPS data rate
   txData[0] = ADS1219_WREG;
@@ -187,11 +209,58 @@ int main(void)
   txData[0] = ADS1219_STARTSYNC;
   HAL_I2C_Master_Transmit(&hi2c1, ADS1219_ADDR, txData, 1, HAL_MAX_DELAY);
 
+  // Average 100 measurements to get the offset for each load cell
+  for (int i = 0; i < 100; i++) {
+	  // Configure ADS1219 MUX to measure AIN0/1 load cell
+	  txData[0] = ADS1219_WREG;
+	  txData[1] = 0x16;
+	  HAL_I2C_Master_Transmit(&hi2c1, ADS1219_ADDR, txData, 2, HAL_MAX_DELAY);
+	  // Wait a bit to take the measurements
+	  HAL_Delay(15);
+	  // Read the measurement and store it
+	  txData[0] = ADS1219_RDATA;
+	  HAL_I2C_Master_Transmit(&hi2c1, ADS1219_ADDR, txData, 1, HAL_MAX_DELAY);
+	  rxData[0] = 0x00;
+	  rxData[1] = 0x00;
+	  rxData[2] = 0x00;
+	  HAL_I2C_Master_Receive(&hi2c1, ADS1219_ADDR, rxData, 3, HAL_MAX_DELAY);
+	  rawLoadCell1 = (rxData[0] << 16) | (rxData[1] << 8) | rxData[2];
+	  avg1 += rawLoadCell1;
+
+	  // Configure ADS1115 MUX to measure AIN2/3 load cell
+	  txData[0] = ADS1219_WREG;
+	  txData[1] = 0x36;
+	  HAL_I2C_Master_Transmit(&hi2c1, ADS1219_ADDR, txData, 2, HAL_MAX_DELAY);
+	  // Wait a bit to take the measurements
+	  HAL_Delay(15);
+	  // Read the measurement and store it
+	  txData[0] = ADS1219_RDATA;
+	  HAL_I2C_Master_Transmit(&hi2c1, ADS1219_ADDR, txData, 1, HAL_MAX_DELAY);
+	  rxData[0] = 0x00;
+	  rxData[1] = 0x00;
+	  rxData[2] = 0x00;
+	  HAL_I2C_Master_Receive(&hi2c1, ADS1219_ADDR, rxData, 3, HAL_MAX_DELAY);
+	  rawLoadCell2 = (rxData[0] << 16) | (rxData[1] << 8) | rxData[2];
+	  avg2 += rawLoadCell2;
+  }
+
+  avg1 = avg1/100;
+  avg2 = avg2/100;
+  LoadCell1_Offset = avg1;
+  LoadCell2_OffsetA = avg2;
+  LoadCell2_OffsetB = avg2;
+
+  printf("Calculated the following offsets: %ld for cell A, %ld for cell B\r\n", LoadCell1_Offset, LoadCell2_OffsetA);
+
   // Startup for servo motors
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
   SetServoAngle(TIM_CHANNEL_1, SERVO1_START);
   SetServoAngle(TIM_CHANNEL_2, SERVO2_START);
+  SetServoAngle(TIM_CHANNEL_3, SERVO3_START);
+  SetServoAngle(TIM_CHANNEL_4, SERVO4_START);
   HAL_Delay(3000);
   HAL_TIM_Base_Start_IT(&htim2);
   HAL_TIM_Base_Start_IT(&htim3);
@@ -209,7 +278,25 @@ int main(void)
 		  SetServoAngle(TIM_CHANNEL_3, SERVO3_START);
 		  SetServoAngle(TIM_CHANNEL_4, SERVO4_START);
 
+		  servoAng1 = SERVO1_START;
+		  servoDir1 = 1;
+		  servoSpeed1 = 0;
+		  servoSpeedCalc1 = 0;
+		  servoAng2 = SERVO2_START;
+		  servoDir2 = 1;
+		  servoAng3 = SERVO3_START;
+		  servoDir1 = 1;
+		  servoSpeed3 = 0;
+		  servoSpeedCalc3 = 0;
+		  servoAng4 = SERVO4_START;
+		  servoDir4 = 1;
+		  finalSweep = false;
+		  finalSweepCount = 0;
+
 		  resetScanners = false;
+		  scaleEnable = true;
+
+		  printf("\nScan complete, resetting scanner position...\r\n");
 	  }
 	  // Sweep the barcode scanners across the cart
 	  if (scannersEnable) {
@@ -217,29 +304,51 @@ int main(void)
 		  if (servoFlag) {
 			  servoFlag = 0;
 
-			  // Servo 1 (pitch axis): Update speed using a quadratic equation
-			  servoSpeed1 = SERVO1_MAX_SPEED*(-0.0001422222*servoAng1*servoAng1 + 0.0256*servoAng1 - 0.152);
+			  // Servo 1 & 3 (pitch axis): Update speed using a quadratic equation
+			  servoSpeedCalc1 = SERVO1_MAX_SPEED*(-0.000395501*servoAng1*servoAng1 + 0.0379681*servoAng1 + 0.0896552);
+			  servoSpeed1 = ((uint8_t)servoSpeedCalc1);
 			  servoAng1 += servoSpeed1*servoDir1;
+
+			  servoSpeedCalc3 = SERVO3_MAX_SPEED*(-0.000395501*servoAng3*servoAng3 + 0.0379681*servoAng3 + 0.0896552);
+			  servoSpeed3 = ((uint8_t)servoSpeedCalc3);
+			  servoAng3 += servoSpeed3*servoDir3;
 			  // Switch direction if max/min value reached
 			  if (servoAng1 >= SERVO1_END) servoDir1 = -1;
 			  if (servoAng1 <= SERVO1_START) servoDir1 = 1;
-			  SetServoAngle(TIM_CHANNEL_1, servoAng1);
+			  if (servoAng3 >= SERVO3_END) servoDir3 = -1;
+			  if (servoAng3 <= SERVO3_START) servoDir3 = 1;
 
-			  // Servo 2 (yaw axis): Increment position by speed value
-			  servoAng2 += SERVO2_SPEED*servoDir2;
-			  // Switch direction if max value reached
-			  if (servoAng2 >= SERVO2_END) servoDir2 = -1;
-			  // If min value reached on yaw axis, stop the scanners (sweep is complete)
-			  if (servoAng2 <= SERVO2_START) {
+			  SetServoAngle(TIM_CHANNEL_1, servoAng1);
+			  SetServoAngle(TIM_CHANNEL_3, servoAng3);
+
+			  // Servo 2 & 4 (yaw axis): Increment position by speed value
+			  if (servoAng2 <= SERVO2_END) servoAng2 += SERVO2_SPEED*servoDir2;
+			  if (servoAng4 <= SERVO4_END) servoAng4 += SERVO4_SPEED*servoDir4;
+			  // If max value reached on yaw axis, reset the scanners (sweep is complete) and re-enable the scale
+//			  if (servoAng2 >= SERVO2_END || servoAng4 >= SERVO4_END) {
+//				  scannersEnable = false;
+//				  resetScanners = true;
+//			  }
+			  // If max value reached on yaw axis, do one final sweep then reset the scanners and re-enable the scale
+			  if (servoAng2 >= SERVO2_END || servoAng4 >= SERVO4_END) {
+				  finalSweep = true;
+			  }
+			  if (finalSweep) {
+				  finalSweepCount += 1;
+			  }
+			  if (finalSweepCount >= FINAL_SWEEP_COUNTS) {
 				  scannersEnable = false;
 				  resetScanners = true;
 			  }
+
 			  SetServoAngle(TIM_CHANNEL_2, servoAng2);
+			  SetServoAngle(TIM_CHANNEL_4, servoAng4);
 		  }
 	  }
 	  // Average 25 measurements (over approx. 1 second) to get the reading from each load cell.
 	  if (scaleEnable) {
 		  prevKilograms = kilograms;
+		  HAL_Delay(100);
 		  for (int i = 0; i < 25; i++) {
 			  // Configure ADS1219 MUX to measure AIN0/1 load cell
 			  txData[0] = ADS1219_WREG;
@@ -281,26 +390,27 @@ int main(void)
 			  avg1 += rawData1[i];
 			  avg2 += rawData2[i];
 		  }
-		  avg1 = avg1/-25; // Load cell A is mounted in opposite direction, so sign is flipped to get the same sign when summing both
-		  avg2 = avg2/25;
-		  kilograms = (avg1 + avg2)*0.512 / 8388608;
+		  avg1 = avg1/25;
+		  avg2 = avg2/-25; // Load cell B is mounted in opposite direction, so sign is flipped to get the same sign when summing both
+		  kilograms = (avg1 + avg2)*lsbToKg;
+		  printf("\nMeasured weight of %.5f kilograms\r\n", kilograms);
 
 		  // Save the weight if required
 		  if (recordWeightFlag == true) {
-			  prevRecordedWeight = recordedWeight;
 			  recordedWeight = kilograms;
+			  totalWeight += recordedWeight;
 			  // Stop the scale and start the barcode scanners
 			  scannersEnable = true;
 			  scaleEnable = false;
+			  recordWeightFlag = false;
+			  printf("Weight of product added to cart: %.5f kilograms\r\nTotal cart weight: %.5f\r\n", recordedWeight, totalWeight);
 		  }
 		  // TODO: Send weight info to ESP32
 
 		  // Check if current weight is greater than previous weight by the established threshold (25g)
-		  if (kilograms > (prevKilograms + WEIGHT_THRESHOLD) && recordWeightFlag == false) {
+		  if (kilograms > (totalWeight + WEIGHT_THRESHOLD) && recordWeightFlag == false) {
 			  recordWeightFlag = true;
 		  }
-
-		  recordWeightFlag = false;
 	  }
 
     /* USER CODE END WHILE */
@@ -498,7 +608,7 @@ static void MX_TIM2_Init(void)
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 8399;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 399;
+  htim2.Init.Period = 799;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -715,6 +825,10 @@ void SetServoAngle (uint32_t channel, uint8_t angle) {
 		case TIM_CHANNEL_2:
 			__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, dutyCycle);
 			break;
+		case TIM_CHANNEL_3:
+			__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, dutyCycle);
+		case TIM_CHANNEL_4:
+			__HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, dutyCycle);
 		default:
 			break;
 	}

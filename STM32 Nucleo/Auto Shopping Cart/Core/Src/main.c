@@ -67,6 +67,9 @@
 
 #define FINAL_SWEEP_COUNTS	20
 
+#define MAX_BARCODE_LEN		20
+#define MAX_BARCODES		100
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -92,6 +95,13 @@ bool resetScanners = true;
 
 bool recordWeightFlag = false;
 bool scaleEnable = true;
+
+uint8_t uartRxBuffer[MAX_BARCODES][MAX_BARCODE_LEN] = {0};
+uint8_t uartTxBuffer[MAX_BARCODE_LEN + 1] = {0};
+uint8_t txLen = 0;
+volatile uint8_t barcodeIndex = 0;
+volatile uint8_t charIndex = 0;
+uint8_t rxChar;
 
 /* USER CODE END PV */
 
@@ -296,6 +306,10 @@ int main(void)
 		  resetScanners = false;
 		  scaleEnable = true;
 
+		  // Disable any reception from barcode scanners over UART
+		  HAL_UART_DeInit(&huart1);
+		  HAL_UART_DeInit(&huart6);
+
 		  printf("\nScan complete, resetting scanner position...\r\n");
 	  }
 	  // Sweep the barcode scanners across the cart
@@ -339,6 +353,23 @@ int main(void)
 			  if (finalSweepCount >= FINAL_SWEEP_COUNTS) {
 				  scannersEnable = false;
 				  resetScanners = true;
+
+				  // Output all barcodes received
+				  if (barcodeIndex > 0) {
+					  printf("\nReceived %d barcodes:\r\n", barcodeIndex);
+					  for (int i = 0; i < barcodeIndex; i++) {
+						  for (int j = 0; j < MAX_BARCODE_LEN; j++) {
+							  if (uartRxBuffer[i][j] == '\0') {
+								  txLen = j-1;
+								  break;
+							  }
+							  uartTxBuffer[j] = uartRxBuffer[i][j];
+						  }
+						  HAL_UART_Transmit(&huart2, uartTxBuffer, (txLen + 1), HAL_MAX_DELAY);
+						  HAL_UART_Transmit(&huart2, (uint8_t*)"\r\n", 2, HAL_MAX_DELAY);
+					  }
+					  barcodeIndex = 0;
+				  }
 			  }
 
 			  SetServoAngle(TIM_CHANNEL_2, servoAng2);
@@ -347,7 +378,7 @@ int main(void)
 	  }
 	  // Average 25 measurements (over approx. 1 second) to get the reading from each load cell.
 	  if (scaleEnable) {
-		  prevKilograms = kilograms;
+		  prevKilograms = kilograms; // TODO: Use prevKilograms instead of totalWeight for threshold weight measurement
 		  HAL_Delay(100);
 		  for (int i = 0; i < 25; i++) {
 			  // Configure ADS1219 MUX to measure AIN0/1 load cell
@@ -404,6 +435,12 @@ int main(void)
 			  scaleEnable = false;
 			  recordWeightFlag = false;
 			  printf("Weight of product added to cart: %.5f kilograms\r\nTotal cart weight: %.5f\r\n", recordedWeight, totalWeight);
+
+			  // Re-initialize and begin receiving from both UART channels
+			  HAL_UART_Init(&huart1);
+			  HAL_UART_Init(&huart6);
+			  HAL_UART_Receive_IT(&huart1, &rxChar, 1);
+			  HAL_UART_Receive_IT(&huart6, &rxChar, 1);
 		  }
 		  // TODO: Send weight info to ESP32
 
@@ -841,6 +878,45 @@ void TIM2_IRQHandler(void) {
 
 void TIM3_IRQHandler(void) {
   HAL_TIM_IRQHandler(&htim3);
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+    if (huart->Instance == USART1) {  // Check if it's USART1
+        if (rxChar == '\n' || rxChar == '\r') {  // End of message determined by newline or return
+            uartRxBuffer[barcodeIndex][charIndex] = '\0';  // Null-terminate the message
+            barcodeIndex++;  // Move to the next barcode slot
+            charIndex = 0;  // Reset character index
+
+            if (barcodeIndex >= MAX_BARCODES) {  // Prevent buffer overflow
+                barcodeIndex = 0;  // Overwrite old messages (circular buffer)
+            }
+        } else {  // Store character
+            if (charIndex < MAX_BARCODE_LEN - 1) {  // Prevent overflow
+                uartRxBuffer[barcodeIndex][charIndex++] = rxChar;
+            }
+        }
+
+        // Restart reception for the next character
+        HAL_UART_Receive_IT(&huart1, &rxChar, 1);
+    }
+    if (huart->Instance == USART6) {  // Check if it's USART6
+        if (rxChar == '\n' || rxChar == '\r') {  // End of message determined by newline or return
+        	uartRxBuffer[barcodeIndex][charIndex] = '\0';  // Null-terminate the message
+            barcodeIndex++;  // Move to the next barcode slot
+            charIndex = 0;  // Reset character index
+
+            if (barcodeIndex >= MAX_BARCODES) {  // Prevent buffer overflow
+                barcodeIndex = 0;  // Overwrite old messages (circular buffer)
+            }
+        } else {  // Store character
+            if (charIndex < MAX_BARCODE_LEN - 1) {  // Prevent overflow
+            	uartRxBuffer[barcodeIndex][charIndex++] = rxChar;
+            }
+        }
+
+        // Restart reception for the next character
+        HAL_UART_Receive_IT(&huart6, &rxChar, 1);
+    }
 }
 
 /* USER CODE END 4 */

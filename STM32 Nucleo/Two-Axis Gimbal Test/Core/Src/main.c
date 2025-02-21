@@ -23,6 +23,8 @@
 /* USER CODE BEGIN Includes */
 #include "math.h"
 #include <stdbool.h>
+#include <stdio.h>
+#include "string.h"
 
 /* USER CODE END Includes */
 
@@ -47,6 +49,9 @@
 #define SERVO2_END			155
 #define SERVO2_SPEED		1
 
+#define MAX_BARCODE_LEN		20
+#define MAX_BARCODES		100
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -57,12 +62,22 @@
 /* Private variables ---------------------------------------------------------*/
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim3;
 
+UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
+UART_HandleTypeDef huart6;
 
 /* USER CODE BEGIN PV */
 bool servoFlag = false;
+uint8_t uartRxBuffer[MAX_BARCODES][MAX_BARCODE_LEN] = {0};
+uint8_t uartTxBuffer[MAX_BARCODE_LEN + 1] = {0};
+uint8_t txLen = 0;
+volatile uint8_t barcodeIndex = 0;  // Tracks current barcode index
+volatile uint8_t charIndex = 0; // Tracks character position in current message
+uint8_t rxChar;
 
+uint8_t clearBarcodeTimeCount = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -71,6 +86,9 @@ static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_USART1_UART_Init(void);
+static void MX_USART6_UART_Init(void);
+static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
 void SetServoAngle (uint32_t channel, uint8_t angle);
 
@@ -78,7 +96,12 @@ void SetServoAngle (uint32_t channel, uint8_t angle);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+// Redirecting the printf function to print to the console (over UART2)
+int _write(int file, char *data, int len) {
+    // Redirect printf to UART
+    HAL_UART_Transmit(&huart2, (uint8_t*)data, len, HAL_MAX_DELAY);
+    return len;
+}
 /* USER CODE END 0 */
 
 /**
@@ -120,6 +143,9 @@ int main(void)
   MX_USART2_UART_Init();
   MX_TIM1_Init();
   MX_TIM2_Init();
+  MX_USART1_UART_Init();
+  MX_USART6_UART_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
@@ -127,6 +153,11 @@ int main(void)
   SetServoAngle(TIM_CHANNEL_2, SERVO2_START);
   HAL_Delay(3000);
   HAL_TIM_Base_Start_IT(&htim2);
+  HAL_TIM_Base_Start_IT(&htim3);
+
+  // Begin receiving from both UART channels
+  HAL_UART_Receive_IT(&huart1, &rxChar, 1);
+  HAL_UART_Receive_IT(&huart6, &rxChar, 1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -152,6 +183,25 @@ int main(void)
 		  if (servoAng2 >= SERVO2_END) servoDir2 = -1;
 		  if (servoAng2 <= SERVO2_START) servoDir2 = 1;
 		  SetServoAngle(TIM_CHANNEL_2, servoAng2);
+	  }
+
+	  if (clearBarcodeTimeCount >= 10) {
+		  clearBarcodeTimeCount = 0;
+
+		  // Output all barcodes stored
+		  printf("\nReceived %d barcodes:\r\n", barcodeIndex);
+		  for (int i = 0; i < barcodeIndex; i++) {
+			  for (int j = 0; j < MAX_BARCODE_LEN; j++) {
+				  if (uartRxBuffer[i][j] == '\0') {
+					  txLen = j-1;
+					  break;
+				  }
+				  uartTxBuffer[j] = uartRxBuffer[i][j];
+			  }
+			  HAL_UART_Transmit(&huart2, uartTxBuffer, (txLen + 1), HAL_MAX_DELAY);
+			  HAL_UART_Transmit(&huart2, (uint8_t*)"\r\n", 2, HAL_MAX_DELAY);
+		  }
+		  barcodeIndex = 0;
 	  }
 
     /* USER CODE END WHILE */
@@ -307,7 +357,7 @@ static void MX_TIM2_Init(void)
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 8399;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 799;
+  htim2.Init.Period = 399;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -328,6 +378,84 @@ static void MX_TIM2_Init(void)
   /* USER CODE BEGIN TIM2_Init 2 */
 
   /* USER CODE END TIM2_Init 2 */
+
+}
+
+/**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 8399;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 10000;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 9600;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
 
 }
 
@@ -361,6 +489,39 @@ static void MX_USART2_UART_Init(void)
   /* USER CODE BEGIN USART2_Init 2 */
 
   /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
+  * @brief USART6 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART6_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART6_Init 0 */
+
+  /* USER CODE END USART6_Init 0 */
+
+  /* USER CODE BEGIN USART6_Init 1 */
+
+  /* USER CODE END USART6_Init 1 */
+  huart6.Instance = USART6;
+  huart6.Init.BaudRate = 9600;
+  huart6.Init.WordLength = UART_WORDLENGTH_8B;
+  huart6.Init.StopBits = UART_STOPBITS_1;
+  huart6.Init.Parity = UART_PARITY_NONE;
+  huart6.Init.Mode = UART_MODE_TX_RX;
+  huart6.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart6.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart6) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART6_Init 2 */
+
+  /* USER CODE END USART6_Init 2 */
 
 }
 
@@ -418,9 +579,53 @@ void SetServoAngle (uint32_t channel, uint8_t angle) {
 	}
 }
 
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+    if (huart->Instance == USART1) {  // Check if it's USART1
+        if (rxChar == '\n' || rxChar == '\r') {  // End of message determined by newline or return
+            uartRxBuffer[barcodeIndex][charIndex] = '\0';  // Null-terminate the message
+            barcodeIndex++;  // Move to the next barcode slot
+            charIndex = 0;  // Reset character index
+
+            if (barcodeIndex >= MAX_BARCODES) {  // Prevent buffer overflow
+                barcodeIndex = 0;  // Overwrite old messages (circular buffer)
+            }
+        } else {  // Store character
+            if (charIndex < MAX_BARCODE_LEN - 1) {  // Prevent overflow
+                uartRxBuffer[barcodeIndex][charIndex++] = rxChar;
+            }
+        }
+
+        // Restart reception for the next character
+        HAL_UART_Receive_IT(&huart1, &rxChar, 1);
+    }
+    if (huart->Instance == USART6) {  // Check if it's USART6
+        if (rxChar == '\n' || rxChar == '\r') {  // End of message determined by newline or return
+        	uartRxBuffer[barcodeIndex][charIndex] = '\0';  // Null-terminate the message
+            barcodeIndex++;  // Move to the next barcode slot
+            charIndex = 0;  // Reset character index
+
+            if (barcodeIndex >= MAX_BARCODES) {  // Prevent buffer overflow
+                barcodeIndex = 0;  // Overwrite old messages (circular buffer)
+            }
+        } else {  // Store character
+            if (charIndex < MAX_BARCODE_LEN - 1) {  // Prevent overflow
+            	uartRxBuffer[barcodeIndex][charIndex++] = rxChar;
+            }
+        }
+
+        // Restart reception for the next character
+        HAL_UART_Receive_IT(&huart6, &rxChar, 1);
+    }
+}
+
 void TIM2_IRQHandler(void) {
   servoFlag = 1;
   HAL_TIM_IRQHandler(&htim2);
+}
+
+void TIM3_IRQHandler(void) {
+  clearBarcodeTimeCount += 1;
+  HAL_TIM_IRQHandler(&htim3);
 }
 
 /* USER CODE END 4 */

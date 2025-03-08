@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include "math.h"
+#include "string.h"
 
 /* USER CODE END Includes */
 
@@ -89,6 +90,7 @@ UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart6;
 
 /* USER CODE BEGIN PV */
+// Flags for determining which step of the automation process to run
 bool servoFlag = false;
 bool scannersEnable = false;
 bool resetScanners = true;
@@ -96,12 +98,18 @@ bool resetScanners = true;
 bool recordWeightFlag = false;
 bool scaleEnable = true;
 
+// Placeholder/variables for handling UART transmissions
 uint8_t uartRxBuffer[MAX_BARCODES][MAX_BARCODE_LEN] = {0};
-uint8_t uartTxBuffer[MAX_BARCODE_LEN + 1] = {0};
+uint8_t uartTxBuffer[MAX_BARCODE_LEN + 2] = {0};
 uint8_t txLen = 0;
 volatile uint8_t barcodeIndex = 0;
 volatile uint8_t charIndex = 0;
 uint8_t rxChar;
+
+// Local database of known barcodes and their corresponding weights
+// TODO: update these values with the actual barcodes and weights of the items
+uint8_t codesDatabase[5][MAX_BARCODE_LEN] = {"12345", "512512", "5125235", "086632", "532536"};
+uint16_t weightsDatabase[5] = {200, 140, 2300, 400, 550};
 
 /* USER CODE END PV */
 
@@ -117,6 +125,9 @@ static void MX_USART1_UART_Init(void);
 static void MX_USART6_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void SetServoAngle (uint32_t channel, uint8_t angle);
+uint8_t inList(uint8_t *string, uint8_t (*strList)[MAX_BARCODE_LEN]);
+float max(float a, float b);
+uint32_t maxInt(uint32_t a, uint32_t b);
 
 /* USER CODE END PFP */
 
@@ -210,6 +221,14 @@ int main(void)
   float recordedWeight = 0;
   float totalWeight = 0;
 
+  // Arrays to track barcodes for items currently in the cart and prioritize scanned barcodes
+  uint8_t cartCodes[MAX_BARCODES][MAX_BARCODE_LEN] = {0};
+  uint8_t cartNumItems = 0;
+  uint8_t priorities[MAX_BARCODES] = {0};
+  uint8_t sendCodes[MAX_BARCODES] = {0};
+  float remainingWeight = 0;
+  float itemWeight = 0;
+
   // Configure the ADS1219 to do continuous conversion, start with AIN0/1 load cell, use internal 2.048V reference and 90 SPS data rate
   txData[0] = ADS1219_WREG;
   txData[1] = 0x16;
@@ -260,7 +279,7 @@ int main(void)
   LoadCell2_OffsetA = avg2;
   LoadCell2_OffsetB = avg2;
 
-  printf("Calculated the following offsets: %ld for cell A, %ld for cell B\r\n", LoadCell1_Offset, LoadCell2_OffsetA);
+//  printf("Calculated the following offsets: %ld for cell A, %ld for cell B\r\n", LoadCell1_Offset, LoadCell2_OffsetA);
 
   // Startup for servo motors
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
@@ -310,7 +329,7 @@ int main(void)
 		  HAL_UART_DeInit(&huart1);
 		  HAL_UART_DeInit(&huart6);
 
-		  printf("\nScan complete, resetting scanner position...\r\n");
+//		  printf("\nScan complete, resetting scanner position...\r\n");
 	  }
 	  // Sweep the barcode scanners across the cart
 	  if (scannersEnable) {
@@ -355,21 +374,93 @@ int main(void)
 				  resetScanners = true;
 
 				  // Output all barcodes received
-				  if (barcodeIndex > 0) {
-					  printf("\nReceived %d barcodes:\r\n", barcodeIndex);
-					  for (int i = 0; i < barcodeIndex; i++) {
+//				  if (barcodeIndex > 0) {
+////					  printf("\nReceived %d barcodes:\r\n", barcodeIndex);
+//					  for (int i = 0; i < barcodeIndex; i++) {
+//						  for (int j = 0; j < MAX_BARCODE_LEN; j++) {
+//							  if (uartRxBuffer[i][j] == '\0') {
+//								  txLen = j-1;
+//								  break;
+//							  }
+//							  uartTxBuffer[j] = uartRxBuffer[i][j];
+//						  }
+//						  HAL_UART_Transmit(&huart2, uartTxBuffer, (txLen + 1), HAL_MAX_DELAY);
+//						  HAL_UART_Transmit(&huart2, (uint8_t*)"\r\n", 2, HAL_MAX_DELAY);
+//					  }
+//					  barcodeIndex = 0;
+//				  }
+				  // Loop through all scanned barcodes, assign priorities based on likelihood of it being a new item
+				  for (int i = 0; i < barcodeIndex; i++) {
+					  // Priority 1: Item exists in database but is not in cart
+					  if (inList(uartRxBuffer[i], codesDatabase) && !inList(uartRxBuffer[i], cartCodes)) priorities[i] = 1;
+					  // Priority 2 or 3: Item exists in database and 1 or more of that item is in the cart, higher priority to items whose weight exactly matches measured weight (within 5% tolerance)
+					  else if (inList(uartRxBuffer[i], codesDatabase) && inList(uartRxBuffer[i], cartCodes)) {
+						  itemWeight = weightsDatabase[inList(uartRxBuffer[i], codesDatabase) - 1];
+						  if (recordedWeight > (itemWeight - max(1000*WEIGHT_THRESHOLD, 0.05*itemWeight)) && recordedWeight < (itemWeight + max(1000*WEIGHT_THRESHOLD, 0.05*itemWeight))) priorities[i] = 2;
+						  else priorities[i] = 3;
+					  }
+					  // If none of the above apply, reset the priority for this index
+					  else priorities[i] = 0;
+				  }
+				  // Loop through all priorities (lower numbers first) and decide whether or not to send the barcode
+				  remainingWeight = recordedWeight; // Keep track of remaining weight from measured value
+				  for (int i = 0; i < barcodeIndex; i++) {
+					  if (priorities[i] == 1) {
+						  // All priority 1 items are sent no matter what
+						  sendCodes[i] = 1;
+						  // Append this item to the end of the list of cart codes
+						  strncpy(cartCodes[cartNumItems], uartRxBuffer[i], MAX_BARCODE_LEN);
+						  cartNumItems++;
+						  // Subtract the weight of this product from the remaining weight
+						  remainingWeight -= weightsDatabase[inList(uartRxBuffer[i], codesDatabase) - 1];
+					  }
+				  }
+				  for (int i = 0; i < barcodeIndex; i++) {
+					  // Only send priority 2 items if the remaining weight is sufficient
+					  if (priorities[i] == 2) {
+						  itemWeight = weightsDatabase[inList(uartRxBuffer[i], codesDatabase) - 1];
+						  if (remainingWeight > (itemWeight + max(1000*WEIGHT_THRESHOLD, itemWeight*0.05))) {
+							  sendCodes[i] = 1;
+							  // Append this item to the end of the list of cart codes
+							  strncpy(cartCodes[cartNumItems], uartRxBuffer[i], MAX_BARCODE_LEN);
+							  cartNumItems++;
+							  // Subtract the weight of this product from the remaining weight
+							  remainingWeight -= itemWeight;
+						  }
+					  }
+				  }
+				  for (int i = 0; i < barcodeIndex; i++) {
+					  // Only send priority 3 items if the remaining weight is sufficient
+					  if (priorities[i] == 3) {
+						  itemWeight = weightsDatabase[inList(uartRxBuffer[i], codesDatabase) - 1];
+						  if (remainingWeight > (itemWeight + max(1000*WEIGHT_THRESHOLD, itemWeight*0.05))) {
+							  sendCodes[i] = 1;
+							  // Append this item to the end of the list of cart codes
+							  strncpy(cartCodes[cartNumItems], uartRxBuffer[i], MAX_BARCODE_LEN);
+							  cartNumItems++;
+							  // Subtract the weight of this product from the remaining weight
+							  remainingWeight -= itemWeight;
+						  }
+					  }
+				  }
+
+				  // Transmit all the codes flagged to be sent to the ESP32
+				  for (int i = 0; i < barcodeIndex; i++) {
+					  if (sendCodes[i] == 1) {
 						  for (int j = 0; j < MAX_BARCODE_LEN; j++) {
+							  uartTxBuffer[j] = uartRxBuffer[i][j];
 							  if (uartRxBuffer[i][j] == '\0') {
-								  txLen = j-1;
+								  txLen = j;
 								  break;
 							  }
-							  uartTxBuffer[j] = uartRxBuffer[i][j];
 						  }
 						  HAL_UART_Transmit(&huart2, uartTxBuffer, (txLen + 1), HAL_MAX_DELAY);
-						  HAL_UART_Transmit(&huart2, (uint8_t*)"\r\n", 2, HAL_MAX_DELAY);
 					  }
-					  barcodeIndex = 0;
 				  }
+				  // Transmit end of transmission character
+				  HAL_UART_Transmit(&huart2, (uint8_t*)"\r", 1, HAL_MAX_DELAY);
+
+				  barcodeIndex = 0; // Reset barcode index
 			  }
 
 			  SetServoAngle(TIM_CHANNEL_2, servoAng2);
@@ -378,7 +469,7 @@ int main(void)
 	  }
 	  // Average 25 measurements (over approx. 1 second) to get the reading from each load cell.
 	  if (scaleEnable) {
-		  prevKilograms = kilograms; // TODO: Use prevKilograms instead of totalWeight for threshold weight measurement
+		  prevKilograms = kilograms;
 		  HAL_Delay(100);
 		  for (int i = 0; i < 25; i++) {
 			  // Configure ADS1219 MUX to measure AIN0/1 load cell
@@ -424,7 +515,7 @@ int main(void)
 		  avg1 = avg1/25;
 		  avg2 = avg2/-25; // Load cell B is mounted in opposite direction, so sign is flipped to get the same sign when summing both
 		  kilograms = (avg1 + avg2)*lsbToKg;
-		  printf("\nMeasured weight of %.5f kilograms\r\n", kilograms);
+//		  printf("\nMeasured weight of %.5f kilograms\r\n", kilograms);
 
 		  // Save the weight if required
 		  if (recordWeightFlag == true) {
@@ -434,7 +525,9 @@ int main(void)
 			  scannersEnable = true;
 			  scaleEnable = false;
 			  recordWeightFlag = false;
-			  printf("Weight of product added to cart: %.5f kilograms\r\nTotal cart weight: %.5f\r\n", recordedWeight, totalWeight);
+//			  printf("Weight of product added to cart: %.5f kilograms\r\nTotal cart weight: %.5f\r\n", recordedWeight, totalWeight);
+			  // Send weight information to ESP32
+			  printf("W%.3f\0\r", recordedWeight);
 
 			  // Re-initialize and begin receiving from both UART channels
 			  HAL_UART_Init(&huart1);
@@ -442,7 +535,6 @@ int main(void)
 			  HAL_UART_Receive_IT(&huart1, &rxChar, 1);
 			  HAL_UART_Receive_IT(&huart6, &rxChar, 1);
 		  }
-		  // TODO: Send weight info to ESP32
 
 		  // Check if current weight is greater than previous weight by the established threshold (25g)
 		  if (kilograms > (totalWeight + WEIGHT_THRESHOLD) && recordWeightFlag == false) {
@@ -851,6 +943,11 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+/**
+ * Function to set the angle of a servo motor by calculating and setting the required PWM duty cycle
+ * @param channel Which PWM channel to set (i.e. which servo motor to set the angle for)
+ * @param angle Angle (between 0º and 180º) to set the servo motor to
+ */
 void SetServoAngle (uint32_t channel, uint8_t angle) {
 	if (angle >= SERVO_ANGLE_MAX) angle = SERVO_ANGLE_MAX;
 	uint16_t dutyCycle = ((double)angle / 180.0)*SERVO_DUTY_BW + SERVO_DUTY_MIN;
@@ -869,6 +966,29 @@ void SetServoAngle (uint32_t channel, uint8_t angle) {
 		default:
 			break;
 	}
+}
+
+/**
+ * Function to check if a string exists in a list of strings
+ * @param string String to look for in the list
+ * @param strList List of strings to check
+ * @retval Position where item was found (0 if not found) (not to be confused with index)
+ */
+uint8_t inList(uint8_t *string, uint8_t (*strList)[MAX_BARCODE_LEN]) {
+	for (int i = 0; i < sizeof(strList); i++) {
+		if (strcmp(string, strList[i]) == 0) return i+1;
+	}
+	return false;
+}
+
+uint32_t maxInt(uint32_t a, uint32_t b) {
+    if (a > b) return a;
+    return b;
+}
+
+float max(float a, float b) {
+    if (a > b) return a;
+    return b;
 }
 
 void TIM2_IRQHandler(void) {

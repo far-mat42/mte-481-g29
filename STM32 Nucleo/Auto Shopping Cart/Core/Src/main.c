@@ -56,7 +56,7 @@
 
 #define SERVO2_START		20
 #define SERVO2_END			160
-#define SERVO2_SPEED		1
+#define SERVO2_SPEED		0.75
 
 #define SERVO3_START 		0
 #define SERVO3_END			93
@@ -64,7 +64,7 @@
 
 #define SERVO4_START		20
 #define SERVO4_END			160
-#define SERVO4_SPEED		1
+#define SERVO4_SPEED		0.75
 
 #define FINAL_SWEEP_COUNTS	20
 
@@ -184,7 +184,7 @@ int main(void)
   uint8_t servoSpeed1 = 0;
   float servoSpeedCalc1 = 0;
 
-  uint8_t servoAng2 = SERVO2_START;
+  float servoAng2 = SERVO2_START;
   uint8_t servoDir2 = 1;
 
   uint8_t servoAng3 = SERVO3_START;
@@ -192,7 +192,7 @@ int main(void)
   uint8_t servoSpeed3 = 0;
   float servoSpeedCalc3 = 0;
 
-  uint8_t servoAng4 = SERVO2_START;
+  float servoAng4 = SERVO2_START;
   uint8_t servoDir4 = 1;
 
   bool finalSweep = false;
@@ -746,7 +746,7 @@ static void MX_TIM2_Init(void)
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 8399;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 799;
+  htim2.Init.Period = 999;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)

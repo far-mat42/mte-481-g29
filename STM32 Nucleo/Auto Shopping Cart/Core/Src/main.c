@@ -220,6 +220,7 @@ int main(void)
   float prevKilograms = 0;
   float recordedWeight = 0;
   float totalWeight = 0;
+  char weightMsg[20] = {0};
 
   // Arrays to track barcodes for items currently in the cart and prioritize scanned barcodes
   uint8_t cartCodes[MAX_BARCODES][MAX_BARCODE_LEN] = {0};
@@ -390,9 +391,17 @@ int main(void)
 //					  barcodeIndex = 0;
 //				  }
 				  // Loop through all scanned barcodes, assign priorities based on likelihood of it being a new item
+				  remainingWeight = recordedWeight; // Keep track of remaining weight from measured value
 				  for (int i = 0; i < barcodeIndex; i++) {
 					  // Priority 1: Item exists in database but is not in cart
-					  if (inList(uartRxBuffer[i], codesDatabase) && !inList(uartRxBuffer[i], cartCodes)) priorities[i] = 1;
+					  if (inList(uartRxBuffer[i], codesDatabase) && !inList(uartRxBuffer[i], cartCodes)) {
+						  priorities[i] = 1;
+						  // Append this item to the end of the list of cart codes
+						  strncpy(cartCodes[cartNumItems], uartRxBuffer[i], MAX_BARCODE_LEN);
+						  cartNumItems++;
+						  // Subtract the weight of this product from the remaining weight
+						  remainingWeight -= weightsDatabase[inList(uartRxBuffer[i], codesDatabase) - 1];
+					  }
 					  // Priority 2 or 3: Item exists in database and 1 or more of that item is in the cart, higher priority to items whose weight exactly matches measured weight (within 5% tolerance)
 					  else if (inList(uartRxBuffer[i], codesDatabase) && inList(uartRxBuffer[i], cartCodes)) {
 						  itemWeight = weightsDatabase[inList(uartRxBuffer[i], codesDatabase) - 1];
@@ -403,16 +412,10 @@ int main(void)
 					  else priorities[i] = 0;
 				  }
 				  // Loop through all priorities (lower numbers first) and decide whether or not to send the barcode
-				  remainingWeight = recordedWeight; // Keep track of remaining weight from measured value
 				  for (int i = 0; i < barcodeIndex; i++) {
 					  if (priorities[i] == 1) {
 						  // All priority 1 items are sent no matter what
 						  sendCodes[i] = 1;
-						  // Append this item to the end of the list of cart codes
-						  strncpy(cartCodes[cartNumItems], uartRxBuffer[i], MAX_BARCODE_LEN);
-						  cartNumItems++;
-						  // Subtract the weight of this product from the remaining weight
-						  remainingWeight -= weightsDatabase[inList(uartRxBuffer[i], codesDatabase) - 1];
 					  }
 				  }
 				  for (int i = 0; i < barcodeIndex; i++) {
@@ -447,6 +450,8 @@ int main(void)
 				  // Transmit all the codes flagged to be sent to the ESP32
 				  for (int i = 0; i < barcodeIndex; i++) {
 					  if (sendCodes[i] == 1) {
+						  // Transmit start of barcode character
+						  HAL_UART_Transmit(&huart2, (uint8_t*)"C", 1, HAL_MAX_DELAY);
 						  for (int j = 0; j < MAX_BARCODE_LEN; j++) {
 							  uartTxBuffer[j] = uartRxBuffer[i][j];
 							  if (uartRxBuffer[i][j] == '\0') {
@@ -512,8 +517,8 @@ int main(void)
 			  avg1 += rawData1[i];
 			  avg2 += rawData2[i];
 		  }
-		  avg1 = avg1/25;
-		  avg2 = avg2/-25; // Load cell B is mounted in opposite direction, so sign is flipped to get the same sign when summing both
+		  avg1 = avg1/-25;
+		  avg2 = avg2/25; // Load cell B is mounted in opposite direction, so sign is flipped to get the same sign when summing both
 		  kilograms = (avg1 + avg2)*lsbToKg;
 //		  printf("\nMeasured weight of %.5f kilograms\r\n", kilograms);
 
@@ -527,7 +532,11 @@ int main(void)
 			  recordWeightFlag = false;
 //			  printf("Weight of product added to cart: %.5f kilograms\r\nTotal cart weight: %.5f\r\n", recordedWeight, totalWeight);
 			  // Send weight information to ESP32
-			  printf("W%.3f\0\r", recordedWeight);
+//			  printf("W%.3f\0\r", recordedWeight);
+			  snprintf(weightMsg, sizeof(weightMsg), "W%.3f", recordedWeight);
+			  HAL_UART_Transmit(&huart2, (uint8_t*)weightMsg, strlen(weightMsg), HAL_MAX_DELAY);
+			  // Transmit end of transmission character
+			  HAL_UART_Transmit(&huart2, (uint8_t*)"\r", 1, HAL_MAX_DELAY);
 
 			  // Re-initialize and begin receiving from both UART channels
 			  HAL_UART_Init(&huart1);

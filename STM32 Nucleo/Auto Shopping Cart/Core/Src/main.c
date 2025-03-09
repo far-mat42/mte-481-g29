@@ -54,7 +54,7 @@
 #define SERVO1_END			93
 #define SERVO1_MAX_SPEED	12
 
-#define SERVO2_START		20
+#define SERVO2_START		30
 #define SERVO2_END			160
 #define SERVO2_SPEED		0.75
 
@@ -62,7 +62,7 @@
 #define SERVO3_END			93
 #define SERVO3_MAX_SPEED	12
 
-#define SERVO4_START		20
+#define SERVO4_START		30
 #define SERVO4_END			160
 #define SERVO4_SPEED		0.75
 
@@ -462,6 +462,8 @@ int main(void)
 						  HAL_UART_Transmit(&huart2, uartTxBuffer, (txLen + 1), HAL_MAX_DELAY);
 					  }
 				  }
+				  // Send a dummy barcode in the event where no barcodes were found
+				  HAL_UART_Transmit(&huart2, (uint8_t*)"C000000000000", 1, HAL_MAX_DELAY);
 				  // Transmit end of transmission character
 				  HAL_UART_Transmit(&huart2, (uint8_t*)"\r", 1, HAL_MAX_DELAY);
 

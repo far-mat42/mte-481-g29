@@ -107,9 +107,9 @@ volatile uint8_t charIndex = 0;
 uint8_t rxChar;
 
 // Local database of known barcodes and their corresponding weights
-// TODO: update these values with the actual barcodes and weights of the items
-uint8_t codesDatabase[5][MAX_BARCODE_LEN] = {"12345", "512512", "5125235", "086632", "532536"};
-uint16_t weightsDatabase[5] = {200, 140, 2300, 400, 550};
+// In order: Lime juice, cereal box, pasta bag, "milk"
+uint8_t codesDatabase[5][MAX_BARCODE_LEN] = {"065912581221", "064100147638", "067800007141", "066800004020"};
+uint16_t weightsDatabase[5] = {498, 463, 807, 1904};
 
 /* USER CODE END PV */
 

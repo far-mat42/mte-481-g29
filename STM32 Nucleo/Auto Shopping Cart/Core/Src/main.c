@@ -463,7 +463,7 @@ int main(void)
 					  }
 				  }
 				  // Send a dummy barcode in the event where no barcodes were found
-				  HAL_UART_Transmit(&huart2, (uint8_t*)"C000000000000", 1, HAL_MAX_DELAY);
+				  if (barcodeIndex == 0) HAL_UART_Transmit(&huart2, (uint8_t*)"C000000000000\0", 14, HAL_MAX_DELAY);
 				  // Transmit end of transmission character
 				  HAL_UART_Transmit(&huart2, (uint8_t*)"\r", 1, HAL_MAX_DELAY);
 

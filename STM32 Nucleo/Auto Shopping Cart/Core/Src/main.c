@@ -229,6 +229,7 @@ int main(void)
   uint8_t sendCodes[MAX_BARCODES] = {0};
   float remainingWeight = 0;
   float itemWeight = 0;
+  bool sentCode = false;
 
   // Configure the ADS1219 to do continuous conversion, start with AIN0/1 load cell, use internal 2.048V reference and 90 SPS data rate
   txData[0] = ADS1219_WREG;
@@ -448,8 +449,11 @@ int main(void)
 				  }
 
 				  // Transmit all the codes flagged to be sent to the ESP32
+				  sentCode = false;
 				  for (int i = 0; i < barcodeIndex; i++) {
 					  if (sendCodes[i] == 1) {
+						  // Flag that a code was sent
+						  sentCode = true;
 						  // Transmit start of barcode character
 						  HAL_UART_Transmit(&huart2, (uint8_t*)"C", 1, HAL_MAX_DELAY);
 						  for (int j = 0; j < MAX_BARCODE_LEN; j++) {
@@ -463,9 +467,9 @@ int main(void)
 					  }
 				  }
 				  // Send a dummy barcode in the event where no barcodes were found
-				  if (barcodeIndex == 0) HAL_UART_Transmit(&huart2, (uint8_t*)"C000000000000\0", 14, HAL_MAX_DELAY);
-				  // Transmit end of transmission character
-				  HAL_UART_Transmit(&huart2, (uint8_t*)"\r", 1, HAL_MAX_DELAY);
+//				  if (barcodeIndex == 0) HAL_UART_Transmit(&huart2, (uint8_t*)"C000000000000\0", 14, HAL_MAX_DELAY);
+				  // Transmit end of transmission character (only if something was scanned)
+				  if (sentCode) HAL_UART_Transmit(&huart2, (uint8_t*)"\r", 1, HAL_MAX_DELAY);
 
 				  barcodeIndex = 0; // Reset barcode index
 			  }
